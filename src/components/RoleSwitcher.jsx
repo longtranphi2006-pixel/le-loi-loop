@@ -1,20 +1,61 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../context/AppContext';
-import { RefreshCw, UserCheck, ShieldAlert, Sparkles, ChevronDown } from 'lucide-react';
+import { RefreshCw, ShieldAlert, Database, CloudCheck, CloudOff, ArrowUpCircle } from 'lucide-react';
 
 export default function RoleSwitcher() {
-  const { currentUser, switchRole, resetToSeedData, users } = useApp();
-  const [isOpen, setIsOpen] = useState(false);
+  const {
+    currentUser,
+    switchRole,
+    resetToSeedData,
+    uploadSeedToSupabase,
+    users,
+    isSupabaseConfigured,
+    dbConnected,
+    isSyncing
+  } = useApp();
 
   return (
     <>
-      {/* 1. TOPBAR BANNER MÔ PHỎNG KHKT */}
-      <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-amber-50 text-xs py-1.5 px-4 font-medium flex items-center justify-between shadow-sm relative z-40">
-        <div className="flex items-center gap-2 max-w-7xl mx-auto w-full justify-center text-center">
-          <ShieldAlert className="w-3.5 h-3.5 text-amber-200 shrink-0 animate-pulse" />
-          <span>
-            <strong>CHẾ ĐỘ MÔ PHỎNG KHKT:</strong> Đề tài Nghiên cứu Khoa học Kỹ thuật THCS Lê Lợi – Đà Nẵng. Chưa có xác thực và phân quyền thực tế, hãy đổi vai trò để thử nghiệm quy trình khép kín.
-          </span>
+      {/* 1. TOPBAR BANNER MÔ PHỎNG KHKT & TRẠNG THÁI CƠ SỞ DỮ LIỆU */}
+      <div className="bg-gradient-to-r from-amber-700 via-emerald-800 to-teal-900 text-amber-50 text-xs py-1.5 px-4 font-medium flex items-center justify-between shadow-sm relative z-40">
+        <div className="flex flex-col sm:flex-row items-center gap-2 max-w-7xl mx-auto w-full justify-between text-center sm:text-left">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-3.5 h-3.5 text-amber-300 shrink-0 animate-pulse" />
+            <span>
+              <strong>DỰ ÁN KHKT THCS LÊ LỢI:</strong> Hệ thống điều phối ghép nối trao nhận đồ dùng học tập thông minh.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isSupabaseConfigured && dbConnected ? (
+              <span className="inline-flex items-center gap-1.5 bg-emerald-600/90 text-white px-2.5 py-0.5 rounded-full font-bold text-[11px] shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                Supabase Real-time: Đã kết nối
+              </span>
+            ) : isSupabaseConfigured && !dbConnected ? (
+              <span className="inline-flex items-center gap-1 bg-amber-500 text-amber-950 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
+                <Database className="w-3 h-3" />
+                Supabase: Đang kết nối...
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 bg-amber-500/30 text-amber-100 border border-amber-400/40 px-2 py-0.5 rounded-full text-[10px]">
+                <Database className="w-3 h-3 text-amber-300" />
+                Chế độ Database: Local / Demo
+              </span>
+            )}
+
+            {isSupabaseConfigured && (
+              <button
+                onClick={uploadSeedToSupabase}
+                disabled={isSyncing}
+                className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1"
+                title="Đẩy dữ liệu mẫu lên Supabase Database"
+              >
+                <ArrowUpCircle className="w-3 h-3 text-emerald-300" />
+                <span>Nạp mẫu lên Supabase</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -66,14 +107,14 @@ export default function RoleSwitcher() {
               resetToSeedData();
             }
           }}
+          disabled={isSyncing}
           className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all shadow-sm active:scale-95"
           title="Khôi phục trạng thái dữ liệu gốc ban đầu"
         >
-          <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
+          <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isSyncing ? 'animate-spin' : ''}`} />
           <span className="hidden md:inline">Khôi phục demo</span>
         </button>
       </div>
     </>
   );
 }
-
