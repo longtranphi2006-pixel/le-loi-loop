@@ -8,9 +8,9 @@
 CREATE TABLE IF NOT EXISTS public.users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'student', -- 'student', 'station_staff', 'teacher'
+    role TEXT NOT NULL DEFAULT 'student',
     class TEXT,
-    shift TEXT, -- 'Sáng', 'Chiều', 'Cả ngày'
+    shift TEXT,
     avatar TEXT,
     phone TEXT,
     points INTEGER DEFAULT 0,
@@ -22,18 +22,18 @@ CREATE TABLE IF NOT EXISTS public.users (
 CREATE TABLE IF NOT EXISTS public.items (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
-    category TEXT NOT NULL, -- 'sgk', 'stk', 'truyen', 'cap', 'dungcu', 'dongphuc'
-    condition TEXT NOT NULL, -- 'Như mới', 'Tốt', 'Đã dùng còn tốt'
+    category TEXT NOT NULL,
+    condition TEXT NOT NULL,
     description TEXT,
     donor_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
     donor_name TEXT,
-    available_slots JSONB DEFAULT '[]'::jsonb, -- Mảng các mã ca rảnh ['T2_PM', 'T3_PM']
-    input_method TEXT DEFAULT 'website', -- 'website' | 'paper'
-    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'matching', 'stored', 'completed', 'rejected', 'needs_update'
-    request_status TEXT NOT NULL DEFAULT 'open', -- 'open' | 'closed'
+    available_slots JSONB DEFAULT '[]'::jsonb,
+    input_method TEXT DEFAULT 'website',
+    status TEXT NOT NULL DEFAULT 'pending',
+    request_status TEXT NOT NULL DEFAULT 'open',
     image TEXT,
-    quality_check JSONB DEFAULT NULL, -- { "passed": true, "note": "...", "checkedBy": "TR01" }
-    storage_slot TEXT DEFAULT NULL, -- 'K1-A1' .. 'K1-B5'
+    quality_check JSONB DEFAULT NULL,
+    storage_slot TEXT DEFAULT NULL,
     reject_reason TEXT DEFAULT NULL,
     update_note TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -47,9 +47,9 @@ CREATE TABLE IF NOT EXISTS public.requests (
     requester_name TEXT NOT NULL,
     requester_class TEXT,
     reason TEXT NOT NULL,
-    available_slots JSONB DEFAULT '[]'::jsonb, -- Mảng các mã ca rảnh ['T2_AM', 'T3_AM']
-    input_method TEXT DEFAULT 'website', -- 'website' | 'paper'
-    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'selected', 'backup', 'rejected'
+    available_slots JSONB DEFAULT '[]'::jsonb,
+    input_method TEXT DEFAULT 'website',
+    status TEXT NOT NULL DEFAULT 'pending',
     lottery_rank INTEGER DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -61,12 +61,12 @@ CREATE TABLE IF NOT EXISTS public.appointments (
     request_id TEXT REFERENCES public.requests(id) ON DELETE SET NULL,
     donor_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
     requester_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
-    type TEXT NOT NULL DEFAULT 'direct', -- 'direct' | 'temporary_storage'
+    type TEXT NOT NULL DEFAULT 'direct',
     donor_slot TEXT NOT NULL,
     requester_slot TEXT NOT NULL,
     storage_slot TEXT DEFAULT NULL,
-    pickup_code TEXT NOT NULL UNIQUE, -- Ví dụ: LOOP-7821
-    status TEXT NOT NULL DEFAULT 'scheduled', -- 'scheduled', 'donor_arrived', 'ready_for_pickup', 'completed', 'cancelled', 'failed_inspection'
+    pickup_code TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'scheduled',
     donor_arrived_at TIMESTAMPTZ DEFAULT NULL,
     picked_up_at TIMESTAMPTZ DEFAULT NULL,
     notes TEXT,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS public.logs (
 );
 
 -- =========================================================================
--- BẬT ROW LEVEL SECURITY (RLS) VỚI POLICY MỞ CHO MÔ HÌNH SPA THCS
+-- BẬT ROW LEVEL SECURITY (RLS) & XÓA POLICY CŨ NẾU ĐÃ TỒN TẠI (TRÁNH LỖI DUPLICATE)
 -- =========================================================================
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
@@ -92,33 +92,79 @@ ALTER TABLE public.requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
 
+-- Users policies
+DROP POLICY IF EXISTS "Allow public read users" ON public.users;
+DROP POLICY IF EXISTS "Allow public insert users" ON public.users;
+DROP POLICY IF EXISTS "Allow public update users" ON public.users;
+
 CREATE POLICY "Allow public read users" ON public.users FOR SELECT USING (true);
 CREATE POLICY "Allow public insert users" ON public.users FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update users" ON public.users FOR UPDATE USING (true);
+
+-- Items policies
+DROP POLICY IF EXISTS "Allow public read items" ON public.items;
+DROP POLICY IF EXISTS "Allow public insert items" ON public.items;
+DROP POLICY IF EXISTS "Allow public update items" ON public.items;
+DROP POLICY IF EXISTS "Allow public delete items" ON public.items;
 
 CREATE POLICY "Allow public read items" ON public.items FOR SELECT USING (true);
 CREATE POLICY "Allow public insert items" ON public.items FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update items" ON public.items FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete items" ON public.items FOR DELETE USING (true);
 
+-- Requests policies
+DROP POLICY IF EXISTS "Allow public read requests" ON public.requests;
+DROP POLICY IF EXISTS "Allow public insert requests" ON public.requests;
+DROP POLICY IF EXISTS "Allow public update requests" ON public.requests;
+DROP POLICY IF EXISTS "Allow public delete requests" ON public.requests;
+
 CREATE POLICY "Allow public read requests" ON public.requests FOR SELECT USING (true);
 CREATE POLICY "Allow public insert requests" ON public.requests FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update requests" ON public.requests FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete requests" ON public.requests FOR DELETE USING (true);
 
+-- Appointments policies
+DROP POLICY IF EXISTS "Allow public read appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Allow public insert appointments" ON public.appointments;
+DROP POLICY IF EXISTS "Allow public update appointments" ON public.appointments;
+
 CREATE POLICY "Allow public read appointments" ON public.appointments FOR SELECT USING (true);
 CREATE POLICY "Allow public insert appointments" ON public.appointments FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update appointments" ON public.appointments FOR UPDATE USING (true);
 
+-- Logs policies
+DROP POLICY IF EXISTS "Allow public read logs" ON public.logs;
+DROP POLICY IF EXISTS "Allow public insert logs" ON public.logs;
+
 CREATE POLICY "Allow public read logs" ON public.logs FOR SELECT USING (true);
 CREATE POLICY "Allow public insert logs" ON public.logs FOR INSERT WITH CHECK (true);
 
--- BẬT TÍNH NĂNG REALTIME REPLICATION TRÊN TẤT CẢ CÁC BẢNG
-ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.items;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.requests;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.appointments;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.logs;
+-- =========================================================================
+-- BẬT TÍNH NĂNG REALTIME AN TOÀN (KHÔNG BÁO LỖI NẾU ĐÃ BẬT TRƯỚC ĐÓ)
+-- =========================================================================
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.items;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.requests;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.appointments;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.logs;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+END $$;
 
 -- =========================================================================
 -- DỮ LIỆU BAN ĐẦU (SEED DATA MẪU)
