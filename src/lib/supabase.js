@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+// Tự động chuẩn hóa nếu người dùng copy nhầm cả đuôi /rest/v1/
+const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -133,3 +135,4 @@ export const mapLogToDb = (log) => ({
   action: log.action,
   details: log.details
 });
+
