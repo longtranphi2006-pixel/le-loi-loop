@@ -520,6 +520,68 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Người cho (Donor B) đồng ý trao món đồ cho Người nhận (A)
+  const acceptRequestByDonor = async (requestId) => {
+    const req = requests.find(r => r.id === requestId);
+    if (!req) return;
+    const itm = items.find(i => i.id === req.itemId);
+
+    setRequests(prev => prev.map(r => {
+      if (r.itemId === req.itemId) {
+        return {
+          ...r,
+          status: r.id === requestId ? 'selected' : 'backup',
+          lotteryRank: r.id === requestId ? 1 : 2
+        };
+      }
+      return r;
+    }));
+
+    setItems(prev => prev.map(i => {
+      if (i.id === req.itemId) {
+        return { ...i, status: 'matching', requestStatus: 'closed' };
+      }
+      return i;
+    }));
+
+    addLog('NGƯỜI CHO ĐỒNG Ý TRAO', `Người tặng ${currentUser.name} (${currentUser.id}) đã đồng ý trao tặng món "${itm?.title || req.itemId}" cho bạn ${req.requesterName} (${req.requesterId}). Chuyển sang khâu xếp lịch LoopMatch.`);
+    showNotification(`Bạn đã đồng ý trao tặng món đồ cho ${req.requesterName}! Chuyển sang điều phối lịch.`, 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await Promise.all([
+          supabase.from('requests').update({ status: 'selected', lottery_rank: 1 }).eq('id', requestId),
+          supabase.from('requests').update({ status: 'backup', lottery_rank: 2 }).eq('item_id', req.itemId).neq('id', requestId),
+          supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', req.itemId)
+        ]);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  // Người cho (Donor B) từ chối yêu cầu từ Người nhận
+  const rejectRequestByDonor = async (requestId, reason = 'Người cho đã chọn ứng viên khác') => {
+    setRequests(prev => prev.map(r => {
+      if (r.id === requestId) {
+        return { ...r, status: 'rejected', rejectReason: reason };
+      }
+      return r;
+    }));
+
+    const req = requests.find(r => r.id === requestId);
+    addLog('TỪ CHỐI YÊU CẦU NHẬN', `Người tặng ${currentUser.name} từ chối yêu cầu của ${req?.requesterName} cho món ${req?.itemId}. Lý do: ${reason}`);
+    showNotification(`Đã từ chối yêu cầu nhận của ${req?.requesterName}.`, 'info');
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('requests').update({ status: 'rejected' }).eq('id', requestId);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
   // Điều phối & Chốt lịch hẹn (Tạo appointment)
   const confirmAppointment = async ({
     itemId,
@@ -890,6 +952,8 @@ export const AppProvider = ({ children }) => {
         closeItemRegistration,
         conductLottery,
         selectRecipientManually,
+        acceptRequestByDonor,
+        rejectRequestByDonor,
         confirmAppointment,
         rescheduleAppointment,
         cancelAppointment,

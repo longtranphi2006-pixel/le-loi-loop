@@ -14,15 +14,26 @@ import {
   Tag,
   User,
   XCircle,
-  Warehouse
+  Warehouse,
+  Check,
+  Inbox,
+  MessageSquare
 } from 'lucide-react';
 
 export default function ItemDetailPage({ item, setActivePage }) {
-  const { currentUser, addRequest, requests } = useApp();
+  const {
+    currentUser,
+    addRequest,
+    requests,
+    acceptRequestByDonor,
+    rejectRequestByDonor
+  } = useApp();
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [reason, setReason] = useState('');
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [inputMethod, setInputMethod] = useState('website');
+
+  const itemRequests = item ? requests.filter(r => r.itemId === item.id) : [];
 
   if (!item) {
     return (
@@ -233,6 +244,105 @@ export default function ItemDetailPage({ item, setActivePage }) {
           </div>
         </div>
       </div>
+
+      {/* DANH SÁCH YÊU CẦU NHẬN TỪ BẠN HỌC (HIỂN THỊ CHO NGƯỜI CHO / CHỦ MÓN ĐỒ) */}
+      {isDonor && (
+        <div className="bg-white rounded-3xl border-2 border-emerald-300 p-6 sm:p-8 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Inbox className="w-5 h-5 text-emerald-600" />
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">
+                  Các bạn học sinh đang xin nhận món đồ này ({itemRequests.length} bạn)
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Bạn là chủ món đồ, bạn có thể xem lý do của từng bạn và đồng ý trao tặng trực tiếp
+                </p>
+              </div>
+            </div>
+            <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full self-start sm:self-auto">
+              Chế độ Người tặng
+            </span>
+          </div>
+
+          {itemRequests.length === 0 ? (
+            <div className="text-center py-8 text-xs text-gray-500 space-y-1">
+              <MessageSquare className="w-8 h-8 text-gray-300 mx-auto" />
+              <p className="font-medium">Chưa có bạn nào gửi yêu cầu nhận món này.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {itemRequests.map(req => (
+                <div
+                  key={req.id}
+                  className={`p-4 rounded-2xl border text-xs space-y-2 transition-all ${
+                    req.status === 'selected'
+                      ? 'bg-emerald-50 border-emerald-400 font-bold'
+                      : req.status === 'rejected'
+                      ? 'bg-gray-50 border-gray-200 opacity-60'
+                      : 'bg-white border-gray-200 hover:border-emerald-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-900 text-sm">{req.requesterName}</span>
+                      <span className="text-gray-500 font-mono bg-gray-100 px-2 py-0.2 rounded">
+                        Lớp {req.requesterClass} ({req.requesterId})
+                      </span>
+                    </div>
+
+                    <div>
+                      {req.status === 'selected' && (
+                        <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold">
+                          ✓ Đã đồng ý trao
+                        </span>
+                      )}
+                      {req.status === 'backup' && (
+                        <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">
+                          Dự phòng
+                        </span>
+                      )}
+                      {req.status === 'pending' && (
+                        <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-bold">
+                          Đang chờ bạn chọn
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-gray-700 italic bg-gray-50 p-2 rounded-xl">
+                    "{req.reason}"
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                    <div className="text-[11px] text-gray-500">
+                      Ca có thể nhận: {req.availableSlots?.map(s => STATION_SLOTS.find(sl => sl.id === s)?.label || s).join(', ')}
+                    </div>
+
+                    {req.status === 'pending' && (
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button
+                          onClick={() => rejectRequestByDonor(req.id)}
+                          className="px-3 py-1 rounded-lg text-gray-500 hover:bg-gray-100 font-semibold"
+                        >
+                          Từ chối
+                        </button>
+                        <button
+                          onClick={() => acceptRequestByDonor(req.id)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Đồng ý trao</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* MODAL GỬI YÊU CẦU NHẬN (TRANG 5) */}
       {showRequestModal && (

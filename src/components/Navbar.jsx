@@ -26,11 +26,15 @@ export default function Navbar({ activePage, setActivePage }) {
     (a.status === 'scheduled' || a.status === 'ready_for_pickup')
   ).length;
 
+  const myPostedItemIds = items.filter(i => i.donorId === currentUser.id).map(i => i.id);
+  const incomingPendingCount = requests.filter(r => myPostedItemIds.includes(r.itemId) && r.status === 'pending').length;
+  const totalActivityBadge = myAppointmentsCount + incomingPendingCount;
+
   const navItems = [
     { id: 'home', label: 'Trang chủ', icon: Home },
     { id: 'catalog', label: 'Kho đồ', icon: Package, badge: items.filter(i => i.status === 'approved' && i.requestStatus === 'open').length },
     { id: 'donate', label: 'Đăng đồ', icon: PlusCircle },
-    { id: 'my-activity', label: 'Hoạt động', icon: Clock, badge: myAppointmentsCount > 0 ? myAppointmentsCount : null },
+    { id: 'my-activity', label: 'Hoạt động', icon: Clock, badge: totalActivityBadge > 0 ? totalActivityBadge : null },
     { id: 'station', label: 'Trạm Lê Lợi', icon: Warehouse },
     { id: 'loopmatch', label: 'LoopMatch', icon: Cpu },
     { id: 'admin', label: 'Quản lý', icon: SlidersHorizontal, badge: (currentUser.role === 'teacher' || currentUser.role === 'station_staff') && pendingItemsCount > 0 ? pendingItemsCount : null },
