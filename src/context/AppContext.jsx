@@ -7,7 +7,8 @@ import {
   INITIAL_ITEMS,
   INITIAL_REQUESTS,
   INITIAL_APPOINTMENTS,
-  INITIAL_LOGS
+  INITIAL_LOGS,
+  INITIAL_NOTIFICATIONS
 } from '../data/seedData';
 import { generatePickupCode, runLotteryWithSeed } from '../utils/loopMatchAlgorithm';
 import {
@@ -20,7 +21,9 @@ import {
   mapAppointmentFromDb,
   mapAppointmentToDb,
   mapLogFromDb,
-  mapLogToDb
+  mapLogToDb,
+  mapNotificationFromDb,
+  mapNotificationToDb
 } from '../lib/supabase';
 
 const STORAGE_KEY_PREFIX = 'LE_LOI_LOOP_V1_';
@@ -30,6 +33,7 @@ const KEYS = {
   REQUESTS: STORAGE_KEY_PREFIX + 'REQUESTS',
   APPOINTMENTS: STORAGE_KEY_PREFIX + 'APPOINTMENTS',
   LOGS: STORAGE_KEY_PREFIX + 'LOGS',
+  NOTIFICATIONS: STORAGE_KEY_PREFIX + 'NOTIFICATIONS',
 };
 
 const AppContext = createContext(null);
@@ -85,6 +89,17 @@ export const AppProvider = ({ children }) => {
     return INITIAL_LOGS;
   });
 
+  // 6. Notifications (Thông báo thời gian thực giữa người cho và người nhận)
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const saved = localStorage.getItem(KEYS.NOTIFICATIONS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return INITIAL_NOTIFICATIONS;
+  });
+
   const [notification, setNotification] = useState(null);
   const [dbConnected, setDbConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -93,7 +108,7 @@ export const AppProvider = ({ children }) => {
     setNotification({ message, type, id: Date.now() });
     setTimeout(() => {
       setNotification(prev => (prev?.id ? null : prev));
-    }, 4000);
+    }, 4500);
   };
 
   // Sync to localStorage as local cache/fallback
@@ -104,10 +119,11 @@ export const AppProvider = ({ children }) => {
       localStorage.setItem(KEYS.REQUESTS, JSON.stringify(requests));
       localStorage.setItem(KEYS.APPOINTMENTS, JSON.stringify(appointments));
       localStorage.setItem(KEYS.LOGS, JSON.stringify(logs));
+      localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(notifications));
     } catch (e) {
       console.error(e);
     }
-  }, [currentUser, items, requests, appointments, logs]);
+  }, [currentUser, items, requests, appointments, logs, notifications]);
 
   // Hàm tải dữ liệu từ Supabase
   const loadDataFromSupabase = useCallback(async () => {
@@ -284,11 +300,66 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Tạo thông báo mới
+  const createNotification = async ({
+    recipientId,
+    senderId,
+    senderName,
+    type,
+    title,
+    message,
+    itemId,
+    requestId
+  }) => {
+    const newNotif = {
+      id: `NOTIF-${Date.now().toString().slice(-4)}`,
+      recipientId,
+      senderId,
+      senderName,
+      type, // 'new_request' | 'request_accepted' | 'item_approved'
+      title,
+      message,
+      itemId,
+      requestId,
+      isRead: false,
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+    };
+
+    setNotifications(prev => [newNotif, ...prev]);
+
+    // Nếu người nhận đang đăng nhập, hiển thị thông báo popup ngay lập tức!
+    if (recipientId === currentUser.id) {
+      showNotification(`🔔 ${title}: ${message}`, 'info');
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('notifications').insert([mapNotificationToDb(newNotif)]);
+      } catch (e) {
+        // fail silently
+      }
+    }
+    return newNotif;
+  };
+
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => prev.map(n => n.recipientId === currentUser.id ? { ...n, isRead: true } : n));
+  };
+
   const switchRole = (userId) => {
     const target = USERS.find(u => u.id === userId);
     if (target) {
       setCurrentUser(target);
-      showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
+      const userUnread = notifications.filter(n => n.recipientId === target.id && !n.isRead);
+      if (userUnread.length > 0) {
+        showNotification(`🔔 ${target.name} có ${userUnread.length} thông báo mới! (Yêu cầu gần nhất: ${userUnread[0].message})`, 'info');
+      } else {
+        showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
+      }
       addLog('CHUYỂN ĐỔI VAI TRÒ', `Người dùng chuyển sang đóng vai ${target.name} (${target.id})`);
     }
   };
@@ -411,6 +482,20 @@ export const AppProvider = ({ children }) => {
     const itm = items.find(i => i.id === itemId);
     addLog('GỬI YÊU CẦU NHẬN', `Học sinh ${currentUser.name} (${currentUser.id}) gửi yêu cầu nhận món ${itemId} (${itm?.title || ''}).`);
     showNotification('Đã gửi yêu cầu nhận đồ thành công. Vui lòng theo dõi kết quả xét duyệt!', 'success');
+
+    // TỰ ĐỘNG BẮN THÔNG BÁO ĐẾN NGƯỜI CHO (NGƯỜI B)
+    if (itm && itm.donorId && itm.donorId !== currentUser.id) {
+      createNotification({
+        recipientId: itm.donorId,
+        senderId: currentUser.id,
+        senderName: `${currentUser.name} (${currentUser.class})`,
+        type: 'new_request',
+        title: 'Có bạn xin nhận đồ của bạn!',
+        message: `Học sinh ${currentUser.name} (${currentUser.class}) vừa gửi yêu cầu xin nhận món "${itm.title}" của bạn.`,
+        itemId: itm.id,
+        requestId: newId
+      });
+    }
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -546,6 +631,18 @@ export const AppProvider = ({ children }) => {
 
     addLog('NGƯỜI CHO ĐỒNG Ý TRAO', `Người tặng ${currentUser.name} (${currentUser.id}) đã đồng ý trao tặng món "${itm?.title || req.itemId}" cho bạn ${req.requesterName} (${req.requesterId}). Chuyển sang khâu xếp lịch LoopMatch.`);
     showNotification(`Bạn đã đồng ý trao tặng món đồ cho ${req.requesterName}! Chuyển sang điều phối lịch.`, 'success');
+
+    // TỰ ĐỘNG BẮN THÔNG BÁO CHO BẠN A (NGƯỜI NHẬN)
+    createNotification({
+      recipientId: req.requesterId,
+      senderId: currentUser.id,
+      senderName: `${currentUser.name} (${currentUser.class})`,
+      type: 'request_accepted',
+      title: 'Yêu cầu được chấp thuận! 🎉',
+      message: `Bạn ${currentUser.name} đã đồng ý trao tặng món "${itm?.title || req.itemId}" cho bạn! Vui lòng theo dõi lịch hẹn.`,
+      itemId: req.itemId,
+      requestId: req.id
+    });
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -941,6 +1038,10 @@ export const AppProvider = ({ children }) => {
         requests,
         appointments,
         logs,
+        notifications,
+        createNotification,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
         occupiedSlots,
         occupiedSlotCount,
         maxCapacity: 10,

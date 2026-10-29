@@ -136,3 +136,30 @@ export const mapLogToDb = (log) => ({
   details: log.details
 });
 
+export const mapNotificationFromDb = (row) => ({
+  id: row.id,
+  recipientId: row.recipient_id,
+  senderId: row.sender_id,
+  senderName: row.sender_name,
+  type: row.type,
+  title: row.title,
+  message: row.message,
+  itemId: row.item_id,
+  requestId: row.request_id,
+  isRead: row.is_read,
+  createdAt: row.created_at ? row.created_at.replace('T', ' ').substring(0, 16) : ''
+});
+
+export const mapNotificationToDb = (n) => ({
+  id: n.id,
+  recipient_id: n.recipientId,
+  sender_id: n.senderId,
+  sender_name: n.senderName,
+  type: n.type,
+  title: n.title,
+  message: n.message,
+  item_id: n.itemId,
+  request_id: n.requestId,
+  is_read: n.isRead
+});
+

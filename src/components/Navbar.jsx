@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Home,
@@ -12,12 +12,44 @@ import {
   Menu,
   X,
   Sparkles,
-  Award
+  Award,
+  Bell,
+  CheckCheck,
+  CheckCircle2,
+  Heart,
+  MessageSquare,
+  ArrowRight
 } from 'lucide-react';
 
 export default function Navbar({ activePage, setActivePage }) {
-  const { currentUser, items, requests, appointments } = useApp();
+  const {
+    currentUser,
+    items,
+    requests,
+    appointments,
+    notifications,
+    markNotificationAsRead,
+    markAllNotificationsAsRead
+  } = useApp();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const notifRef = useRef(null);
+
+  // Lọc thông báo gửi đến người dùng hiện tại
+  const myNotifications = (notifications || []).filter(n => n.recipientId === currentUser.id);
+  const unreadCount = myNotifications.filter(n => !n.isRead).length;
+
+  // Đóng dropdown khi click ra ngoài
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Tính số lượng badge
   const pendingItemsCount = items.filter(i => i.status === 'pending').length;
@@ -101,29 +133,125 @@ export default function Navbar({ activePage, setActivePage }) {
             })}
           </nav>
 
-          {/* User info quick peek on desktop */}
-          <div className="hidden sm:flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-xs font-bold text-gray-900">{currentUser.name}</div>
-              <div className="text-[11px] text-emerald-700 font-medium">
-                {currentUser.role === 'teacher' ? 'GV Phụ trách' : currentUser.role === 'station_staff' ? 'Đội Trực Trạm' : `HS Lớp ${currentUser.class}`}
-              </div>
-            </div>
-            <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
-              className="w-9 h-9 rounded-full ring-2 ring-emerald-500 object-cover"
-            />
-          </div>
+          {/* Right actions: Notification Bell & User profile */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* 🔔 NOTIFICATION BELL DROPDOWN */}
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => setNotifDropdownOpen(!notifDropdownOpen)}
+                className={`relative p-2 rounded-xl transition-all ${
+                  notifDropdownOpen
+                    ? 'bg-emerald-100 text-emerald-900 ring-2 ring-emerald-500'
+                    : 'text-gray-600 hover:text-emerald-800 hover:bg-emerald-50'
+                }`}
+                title="Thông báo của bạn"
+              >
+                <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'text-emerald-700 animate-wiggle' : ''}`} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-white animate-pulse">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
 
-          {/* Mobile hamburger */}
-          <div className="flex lg:hidden items-center gap-2">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg text-gray-600 hover:bg-emerald-50 focus:outline-none"
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+              {/* DROPDOWN MENU */}
+              {notifDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-3xl shadow-2xl border border-gray-200 z-50 overflow-hidden animate-fadeIn">
+                  {/* Header */}
+                  <div className="p-4 bg-gradient-to-r from-emerald-800 to-teal-900 text-white flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-emerald-300" />
+                      <h4 className="font-bold text-xs sm:text-sm">Thông báo của bạn</h4>
+                      {unreadCount > 0 && (
+                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.2 rounded-full font-bold">
+                          {unreadCount} mới
+                        </span>
+                      )}
+                    </div>
+
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllNotificationsAsRead}
+                        className="text-[11px] text-emerald-200 hover:text-white flex items-center gap-1 font-semibold"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        <span>Đọc hết</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Notification List */}
+                  <div className="max-h-96 overflow-y-auto divide-y divide-gray-100 p-1">
+                    {myNotifications.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-gray-500 space-y-1">
+                        <Bell className="w-8 h-8 text-gray-300 mx-auto" />
+                        <p className="font-medium">Chưa có thông báo nào dành cho bạn.</p>
+                      </div>
+                    ) : (
+                      myNotifications.map(notif => (
+                        <div
+                          key={notif.id}
+                          onClick={() => {
+                            markNotificationAsRead(notif.id);
+                            setNotifDropdownOpen(false);
+                            setActivePage('my-activity');
+                          }}
+                          className={`p-3.5 rounded-2xl cursor-pointer transition-colors space-y-1.5 ${
+                            notif.isRead
+                              ? 'bg-white hover:bg-gray-50'
+                              : 'bg-emerald-50/70 hover:bg-emerald-100/70 border-l-4 border-emerald-600'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-bold text-xs text-gray-900 flex items-center gap-1.5">
+                              {!notif.isRead && <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />}
+                              {notif.title}
+                            </span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{notif.createdAt}</span>
+                          </div>
+
+                          <p className="text-xs text-gray-600 leading-snug">
+                            {notif.message}
+                          </p>
+
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[10px] text-emerald-800 font-bold flex items-center gap-1 hover:underline">
+                              <span>Xem chi tiết & Phản hồi</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User profile */}
+            <div className="hidden sm:flex items-center gap-3 pl-2 border-l border-gray-200">
+              <div className="text-right">
+                <div className="text-xs font-bold text-gray-900">{currentUser.name}</div>
+                <div className="text-[11px] text-emerald-700 font-medium">
+                  {currentUser.role === 'teacher' ? 'GV Phụ trách' : currentUser.role === 'station_staff' ? 'Đội Trực Trạm' : `HS Lớp ${currentUser.class}`}
+                </div>
+              </div>
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-9 h-9 rounded-full ring-2 ring-emerald-500 object-cover"
+              />
+            </div>
+
+            {/* Mobile hamburger */}
+            <div className="flex lg:hidden items-center">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 rounded-lg text-gray-600 hover:bg-emerald-50 focus:outline-none"
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -164,4 +292,3 @@ export default function Navbar({ activePage, setActivePage }) {
     </header>
   );
 }
-

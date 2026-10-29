@@ -444,3 +444,47 @@ export const INITIAL_LOGS = [
   }
 ];
 
+// Danh sách thông báo trong hệ thống (Notifications)
+export const INITIAL_NOTIFICATIONS = [
+  {
+    id: 'NOTIF-001',
+    recipientId: 'HS001', // Gửi đến Trần Bảo An
+    senderId: 'HS002',
+    senderName: 'Lê Hoàng Nam (8/2)',
+    type: 'new_request',
+    title: 'Yêu cầu nhận đồ mới!',
+    message: 'Bạn Lê Hoàng Nam (8/2) vừa gửi yêu cầu xin nhận món "Bộ Sách Toán 7" của bạn.',
+    itemId: 'M001',
+    requestId: 'REQ-001',
+    isRead: false,
+    createdAt: '2026-10-25 10:00'
+  },
+  {
+    id: 'NOTIF-002',
+    recipientId: 'HS001',
+    senderId: 'HS003',
+    senderName: 'Nguyễn Thảo Nhi (7/4)',
+    type: 'new_request',
+    title: 'Yêu cầu nhận đồ mới!',
+    message: 'Bạn Nguyễn Thảo Nhi (7/4) vừa gửi yêu cầu xin nhận món "Bộ Sách Toán 7" của bạn.',
+    itemId: 'M001',
+    requestId: 'REQ-002',
+    isRead: false,
+    createdAt: '2026-10-25 14:30'
+  },
+  {
+    id: 'NOTIF-003',
+    recipientId: 'HS002', // Gửi đến Lê Hoàng Nam
+    senderId: 'HS001',
+    senderName: 'Trần Bảo An (7/1)',
+    type: 'request_accepted',
+    title: 'Yêu cầu được chấp thuận! 🎉',
+    message: 'Bạn Trần Bảo An đã đồng ý trao tặng món "Bộ Compa và Eke" cho bạn! Hãy kiểm tra lịch hẹn.',
+    itemId: 'M006',
+    requestId: 'REQ-003',
+    isRead: false,
+    createdAt: '2026-10-26 15:00'
+  }
+];
+
+
