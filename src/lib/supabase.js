@@ -14,10 +14,22 @@ export const isSupabaseConfigured = Boolean(
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      },
       realtime: { params: { eventsPerSecond: 10 } }
     })
   : null;
+
+// Sinh mã định danh phân tán chống trùng lặp tuyệt đối giữa nhiều thiết bị
+export const genUniqueId = (prefix = 'ID') => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  }
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+};
 
 // Helpers để chuẩn hóa tên cột giữa CamelCase (React) và SnakeCase (PostgreSQL)
 export const mapItemFromDb = (row) => ({

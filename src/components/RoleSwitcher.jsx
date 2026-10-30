@@ -11,7 +11,9 @@ export default function RoleSwitcher() {
     users,
     isSupabaseConfigured,
     dbConnected,
-    isSyncing
+    isSyncing,
+    syncStatus,
+    syncError
   } = useApp();
 
   return (
@@ -27,20 +29,25 @@ export default function RoleSwitcher() {
           </div>
 
           <div className="flex items-center gap-2">
-            {isSupabaseConfigured && dbConnected ? (
+            {syncStatus === 'synced' ? (
               <span className="inline-flex items-center gap-1.5 bg-emerald-600/90 text-white px-2.5 py-0.5 rounded-full font-bold text-[11px] shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                Supabase Real-time: Đã kết nối
+                Supabase Real-time: Đồng bộ Cloud
               </span>
-            ) : isSupabaseConfigured && !dbConnected ? (
-              <span className="inline-flex items-center gap-1 bg-amber-500 text-amber-950 px-2.5 py-0.5 rounded-full font-bold text-[11px]">
-                <Database className="w-3 h-3" />
-                Supabase: Đang kết nối...
+            ) : syncStatus === 'syncing' ? (
+              <span className="inline-flex items-center gap-1.5 bg-blue-600 text-white px-2.5 py-0.5 rounded-full font-bold text-[11px]">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                Đang đồng bộ Cloud...
+              </span>
+            ) : syncStatus === 'sync_error' ? (
+              <span className="inline-flex items-center gap-1 bg-red-600 text-white px-2.5 py-0.5 rounded-full font-bold text-[11px]" title={syncError || 'Lỗi đồng bộ Cloud'}>
+                <CloudOff className="w-3 h-3" />
+                Lỗi đồng bộ Cloud
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 bg-amber-500/30 text-amber-100 border border-amber-400/40 px-2 py-0.5 rounded-full text-[10px]">
                 <Database className="w-3 h-3 text-amber-300" />
-                Chế độ Database: Local / Demo
+                Chế độ Database: Cục bộ / Offline
               </span>
             )}
 

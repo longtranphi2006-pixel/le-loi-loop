@@ -11,10 +11,11 @@ import StationPage from './pages/StationPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import LoopMatchPage from './pages/LoopMatchPage';
 import LabPage from './pages/LabPage';
+import ProtectedRoute from './components/ProtectedRoute';
 import { CheckCircle2, AlertCircle, Info, XCircle } from 'lucide-react';
 
 function MainContent() {
-  const { notification } = useApp();
+  const { notification, syncStatus, syncError } = useApp();
   const [activePage, setActivePage] = useState('home');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -23,6 +24,14 @@ function MainContent() {
     <div className="min-h-screen flex flex-col bg-[#FDFBF7] text-gray-800">
       {/* 1. TOPBAR BANNER & FLOATING ROLE SWITCHER */}
       <RoleSwitcher />
+
+      {/* CLOUD SYNC ERROR BANNER (NẾU MẤT ĐỒNG BỘ) */}
+      {syncStatus === 'sync_error' && (
+        <div className="bg-red-600 text-white text-xs py-2 px-4 text-center font-bold flex items-center justify-center gap-2 shadow-sm animate-pulse">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>CẢNH BÁO MẤT ĐỒNG BỘ CLOUD: {syncError || 'Không thể kết nối đến Supabase. Đang chạy ở chế độ cục bộ.'}</span>
+        </div>
+      )}
 
       {/* 2. MAIN HEADER & NAVBAR */}
       <Navbar activePage={activePage} setActivePage={setActivePage} />
@@ -106,10 +115,12 @@ function MainContent() {
         )}
 
         {activePage === 'admin' && (
-          <AdminDashboardPage
-            setActivePage={setActivePage}
-            setSelectedItem={setSelectedItem}
-          />
+          <ProtectedRoute allowedRoles={['teacher', 'station_staff', 'admin']} setActivePage={setActivePage}>
+            <AdminDashboardPage
+              setActivePage={setActivePage}
+              setSelectedItem={setSelectedItem}
+            />
+          </ProtectedRoute>
         )}
 
         {activePage === 'lab' && (

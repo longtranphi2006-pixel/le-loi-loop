@@ -14,6 +14,7 @@ import { generatePickupCode, runLotteryWithSeed } from '../utils/loopMatchAlgori
 import {
   supabase,
   isSupabaseConfigured,
+  genUniqueId,
   mapItemFromDb,
   mapItemToDb,
   mapRequestFromDb,
@@ -103,6 +104,8 @@ export const AppProvider = ({ children }) => {
   const [notification, setNotification] = useState(null);
   const [dbConnected, setDbConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('syncing'); // 'synced' | 'syncing' | 'sync_error' | 'offline'
+  const [syncError, setSyncError] = useState(null);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type, id: Date.now() });
@@ -125,69 +128,73 @@ export const AppProvider = ({ children }) => {
     }
   }, [currentUser, items, requests, appointments, logs, notifications]);
 
-  // Hàm tải dữ liệu từ Supabase
+  // Hàm tải dữ liệu từ Supabase - Supabase là Single Source of Truth
   const loadDataFromSupabase = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase) return;
+    if (!isSupabaseConfigured || !supabase) {
+      setSyncStatus('offline');
+      return;
+    }
 
     try {
       setIsSyncing(true);
-      const [itemsRes, requestsRes, appointmentsRes, logsRes] = await Promise.all([
+      const [itemsRes, requestsRes, appointmentsRes, logsRes, notifsRes] = await Promise.all([
         supabase.from('items').select('*').order('created_at', { ascending: false }),
         supabase.from('requests').select('*').order('created_at', { ascending: false }),
         supabase.from('appointments').select('*').order('created_at', { ascending: false }),
-        supabase.from('logs').select('*').order('timestamp', { ascending: false })
+        supabase.from('logs').select('*').order('timestamp', { ascending: false }),
+        supabase.from('notifications').select('*').order('created_at', { ascending: false })
       ]);
 
-      let hasData = false;
+      // Kiểm tra lỗi truy vấn cơ bản
+      if (itemsRes.error) throw new Error(`Lỗi tải Items: ${itemsRes.error.message}`);
+      if (requestsRes.error) throw new Error(`Lỗi tải Requests: ${requestsRes.error.message}`);
+      if (appointmentsRes.error) throw new Error(`Lỗi tải Appointments: ${appointmentsRes.error.message}`);
+      if (logsRes.error) throw new Error(`Lỗi tải Logs: ${logsRes.error.message}`);
 
-      if (!itemsRes.error && itemsRes.data) {
-        if (itemsRes.data.length > 0) {
-          setItems(itemsRes.data.map(mapItemFromDb));
-          hasData = true;
-        }
+      // Nếu Cloud trả về danh sách (dù rỗng []), cập nhật chính xác theo Cloud
+      if (Array.isArray(itemsRes.data)) {
+        setItems(itemsRes.data.map(mapItemFromDb));
       }
 
-      if (!requestsRes.error && requestsRes.data) {
-        if (requestsRes.data.length > 0) {
-          setRequests(requestsRes.data.map(mapRequestFromDb));
-          hasData = true;
-        }
+      if (Array.isArray(requestsRes.data)) {
+        setRequests(requestsRes.data.map(mapRequestFromDb));
       }
 
-      if (!appointmentsRes.error && appointmentsRes.data) {
-        if (appointmentsRes.data.length > 0) {
-          setAppointments(appointmentsRes.data.map(mapAppointmentFromDb));
-          hasData = true;
-        }
+      if (Array.isArray(appointmentsRes.data)) {
+        setAppointments(appointmentsRes.data.map(mapAppointmentFromDb));
       }
 
-      if (!logsRes.error && logsRes.data) {
-        if (logsRes.data.length > 0) {
-          setLogs(logsRes.data.map(mapLogFromDb));
-          hasData = true;
-        }
+      if (Array.isArray(logsRes.data)) {
+        setLogs(logsRes.data.map(mapLogFromDb));
+      }
+
+      // Xử lý bảng notifications (có thể chưa chạy migration)
+      if (!notifsRes.error && Array.isArray(notifsRes.data)) {
+        setNotifications(notifsRes.data.map(mapNotificationFromDb));
       }
 
       setDbConnected(true);
-      if (hasData) {
-        console.log('✓ Supabase: Đồng bộ dữ liệu thành công!');
-      }
+      setSyncStatus('synced');
+      setSyncError(null);
+      console.log('✓ Supabase: Đồng bộ dữ liệu Cloud thành công!');
     } catch (err) {
-      console.warn('Supabase fetch error, fallback to local storage:', err);
+      console.warn('Supabase fetch error, fallback to local cache:', err);
       setDbConnected(false);
+      setSyncStatus('sync_error');
+      setSyncError(err.message || 'Lỗi kết nối Supabase Cloud');
     } finally {
       setIsSyncing(false);
     }
   }, []);
 
-  // Thiết lập Supabase Realtime Listener
+  // Thiết lập Supabase Realtime Listener (Hỗ trợ 5 bảng bao gồm notifications)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
     loadDataFromSupabase();
 
     const channel = supabase
-      .channel('le-loi-loop-realtime')
+      .channel('le-loi-loop-realtime-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
         loadDataFromSupabase();
       })
@@ -200,9 +207,15 @@ export const AppProvider = ({ children }) => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, () => {
         loadDataFromSupabase();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+        loadDataFromSupabase();
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setDbConnected(true);
+          setSyncStatus('synced');
+        } else if (status === 'CHANNEL_ERROR') {
+          setSyncStatus('sync_error');
         }
       });
 
@@ -300,7 +313,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Tạo thông báo mới
+  // Tạo thông báo mới (Đồng bộ Cloud và Local)
   const createNotification = async ({
     recipientId,
     senderId,
@@ -312,11 +325,11 @@ export const AppProvider = ({ children }) => {
     requestId
   }) => {
     const newNotif = {
-      id: `NOTIF-${Date.now().toString().slice(-4)}`,
+      id: genUniqueId('NOTIF'),
       recipientId,
       senderId,
       senderName,
-      type, // 'new_request' | 'request_accepted' | 'item_approved'
+      type, // 'new_request' | 'request_accepted' | 'item_approved' | 'item_ready'
       title,
       message,
       itemId,
@@ -327,16 +340,19 @@ export const AppProvider = ({ children }) => {
 
     setNotifications(prev => [newNotif, ...prev]);
 
-    // Nếu người nhận đang đăng nhập, hiển thị thông báo popup ngay lập tức!
+    // Nếu người nhận đang đăng nhập trên thiết bị này, hiển thị thông báo popup ngay lập tức!
     if (recipientId === currentUser.id) {
       showNotification(`🔔 ${title}: ${message}`, 'info');
     }
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('notifications').insert([mapNotificationToDb(newNotif)]);
+        const { error } = await supabase.from('notifications').insert([mapNotificationToDb(newNotif)]);
+        if (error) {
+          console.warn('Supabase notifications insert error (bảng notifications có thể chưa được tạo qua migration):', error.message);
+        }
       } catch (e) {
-        // fail silently
+        console.warn('Notifications insert exception:', e);
       }
     }
     return newNotif;
@@ -364,10 +380,9 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Đăng món đồ mới (HS)
+  // Đăng món đồ mới (HS) - Chống xung đột ID phân tán
   const addItem = async (itemData) => {
-    const nextNum = items.length + 1;
-    const newId = `M${String(nextNum).padStart(3, '0')}`;
+    const newId = genUniqueId('M');
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
     const newItem = {
@@ -383,15 +398,21 @@ export const AppProvider = ({ children }) => {
     };
 
     setItems(prev => [newItem, ...prev]);
-    addLog('ĐĂNG MÓN MỚI', `Học sinh ${currentUser.name} (${currentUser.id}) gửi đăng món "${newItem.title}" qua hình thức ${newItem.inputMethod === 'website' ? 'Website' : 'Phiếu giấy'}.`);
-    showNotification('Đăng món thành công! Món đồ đang ở trạng thái Chờ duyệt thông tin.', 'success');
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('items').insert([mapItemToDb(newItem)]);
+        const { error } = await supabase.from('items').insert([mapItemToDb(newItem)]);
+        if (error) throw error;
+        addLog('ĐĂNG MÓN MỚI', `Học sinh ${currentUser.name} (${currentUser.id}) gửi đăng món "${newItem.title}" qua hình thức ${newItem.inputMethod === 'website' ? 'Website' : 'Phiếu giấy'}.`);
+        showNotification('Đăng món thành công! Món đồ đang ở trạng thái Chờ duyệt thông tin.', 'success');
       } catch (err) {
         console.error('Supabase addItem error:', err);
+        setSyncStatus('sync_error');
+        showNotification(`Lưu Cloud lỗi: ${err.message}. Đã lưu bản nháp an toàn cục bộ.`, 'warning');
       }
+    } else {
+      addLog('ĐĂNG MÓN MỚI (LOCAL)', `Học sinh ${currentUser.name} (${currentUser.id}) đăng món "${newItem.title}".`);
+      showNotification('Đăng món thành công (Chế độ cục bộ)!', 'info');
     }
 
     return newId;
@@ -458,10 +479,16 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Gửi yêu cầu nhận đồ (HS)
+  // Gửi yêu cầu nhận đồ (HS) - Kiểm tra chống duplicate request
   const addRequest = async (itemId, reason, availableSlots, inputMethod = 'website') => {
-    const nextNum = requests.length + 1;
-    const newId = `REQ-${String(nextNum).padStart(3, '0')}`;
+    // 1. Chống duplicate request ngay tại client
+    const existing = requests.find(r => r.itemId === itemId && r.requesterId === currentUser.id && r.status !== 'rejected');
+    if (existing) {
+      showNotification('Bạn đã gửi yêu cầu nhận món đồ này trước đó rồi!', 'warning');
+      return null;
+    }
+
+    const newId = genUniqueId('REQ');
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
     const newReq = {
@@ -480,8 +507,29 @@ export const AppProvider = ({ children }) => {
 
     setRequests(prev => [newReq, ...prev]);
     const itm = items.find(i => i.id === itemId);
-    addLog('GỬI YÊU CẦU NHẬN', `Học sinh ${currentUser.name} (${currentUser.id}) gửi yêu cầu nhận món ${itemId} (${itm?.title || ''}).`);
-    showNotification('Đã gửi yêu cầu nhận đồ thành công. Vui lòng theo dõi kết quả xét duyệt!', 'success');
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('requests').insert([mapRequestToDb(newReq)]);
+        if (error) {
+          if (error.code === '23505') {
+            showNotification('Yêu cầu đã tồn tại trong hệ thống Database (Chống trùng lặp)!', 'warning');
+          } else {
+            throw error;
+          }
+        } else {
+          addLog('GỬI YÊU CẦU NHẬN', `Học sinh ${currentUser.name} (${currentUser.id}) gửi yêu cầu nhận món ${itemId} (${itm?.title || ''}).`);
+          showNotification('Đã gửi yêu cầu nhận đồ thành công lên Cloud. Vui lòng theo dõi kết quả!', 'success');
+        }
+      } catch (err) {
+        console.error('Supabase addRequest error:', err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi lưu Cloud: ${err.message}`, 'error');
+      }
+    } else {
+      addLog('GỬI YÊU CẦU NHẬN (LOCAL)', `Học sinh ${currentUser.name} gửi yêu cầu nhận món ${itemId}.`);
+      showNotification('Đã gửi yêu cầu nhận đồ thành công (Cục bộ)!', 'info');
+    }
 
     // TỰ ĐỘNG BẮN THÔNG BÁO ĐẾN NGƯỜI CHO (NGƯỜI B)
     if (itm && itm.donorId && itm.donorId !== currentUser.id) {
@@ -495,14 +543,6 @@ export const AppProvider = ({ children }) => {
         itemId: itm.id,
         requestId: newId
       });
-    }
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('requests').insert([mapRequestToDb(newReq)]);
-      } catch (err) {
-        console.error('Supabase addRequest error:', err);
-      }
     }
 
     return newId;
@@ -605,7 +645,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Người cho (Donor B) đồng ý trao món đồ cho Người nhận (A)
+  // Người cho (Donor B) đồng ý trao món đồ cho Người nhận (A) - Hỗ trợ Stored Procedure RPC
   const acceptRequestByDonor = async (requestId) => {
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
@@ -646,13 +686,23 @@ export const AppProvider = ({ children }) => {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await Promise.all([
-          supabase.from('requests').update({ status: 'selected', lottery_rank: 1 }).eq('id', requestId),
-          supabase.from('requests').update({ status: 'backup', lottery_rank: 2 }).eq('item_id', req.itemId).neq('id', requestId),
-          supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', req.itemId)
-        ]);
+        // Ưu tiên gọi Stored Procedure RPC để đảm bảo tính nguyên tử ACID
+        const { error: rpcErr } = await supabase.rpc('rpc_accept_request_by_donor', {
+          p_request_id: requestId,
+          p_donor_id: currentUser.id
+        });
+
+        if (rpcErr) {
+          // Fallback sang cập nhật song song nếu RPC chưa được chạy migration
+          await Promise.all([
+            supabase.from('requests').update({ status: 'selected', lottery_rank: 1 }).eq('id', requestId),
+            supabase.from('requests').update({ status: 'backup', lottery_rank: 2 }).eq('item_id', req.itemId).neq('id', requestId),
+            supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', req.itemId)
+          ]);
+        }
       } catch (err) {
-        console.error(err);
+        console.error('Supabase acceptRequestByDonor error:', err);
+        setSyncStatus('sync_error');
       }
     }
   };
@@ -679,7 +729,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Điều phối & Chốt lịch hẹn (Tạo appointment)
+  // Điều phối & Chốt lịch hẹn (Tạo appointment) - Sinh ID phân tán
   const confirmAppointment = async ({
     itemId,
     requestId,
@@ -690,7 +740,7 @@ export const AppProvider = ({ children }) => {
     requesterSlot,
     notes = ''
   }) => {
-    const aptId = `APT-${Date.now().toString().slice(-4)}`;
+    const aptId = genUniqueId('APT');
     const pickupCode = generatePickupCode();
 
     const newAppointment = {
@@ -800,7 +850,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Tab D: Tiếp nhận & Kiểm tra thực tế tại trạm
+  // Tab D: Tiếp nhận & Kiểm tra thực tế tại trạm - Chống race condition ô kệ
   const inspectAndReceiveItem = async ({
     aptId,
     passed,
@@ -809,6 +859,15 @@ export const AppProvider = ({ children }) => {
   }) => {
     const apt = appointments.find(a => a.id === aptId);
     if (!apt) return;
+
+    // Chống Race Condition ô kệ phía client
+    if (passed && apt.type !== 'direct' && storageSlot) {
+      const isOccupied = items.some(i => i.status === 'stored' && i.storageSlot === storageSlot && i.id !== apt.itemId);
+      if (isOccupied) {
+        showNotification(`Ô kệ ${storageSlot} hiện đã có đồ lưu trữ! Vui lòng chọn ô khác.`, 'error');
+        return false;
+      }
+    }
 
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
@@ -837,17 +896,28 @@ export const AppProvider = ({ children }) => {
 
         if (isSupabaseConfigured && supabase) {
           try {
-            await Promise.all([
-              supabase.from('appointments').update({
-                status: 'ready_for_pickup',
-                donor_arrived_at: now
-              }).eq('id', aptId),
-              supabase.from('items').update({
-                quality_check: { passed: true, note, checkedBy: currentUser.id }
-              }).eq('id', apt.itemId)
-            ]);
+            const { error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
+              p_apt_id: aptId,
+              p_passed: true,
+              p_note: note,
+              p_storage_slot: null,
+              p_checker_id: currentUser.id
+            });
+
+            if (rpcErr) {
+              await Promise.all([
+                supabase.from('appointments').update({
+                  status: 'ready_for_pickup',
+                  donor_arrived_at: now
+                }).eq('id', aptId),
+                supabase.from('items').update({
+                  quality_check: { passed: true, note, checkedBy: currentUser.id }
+                }).eq('id', apt.itemId)
+              ]);
+            }
           } catch (err) {
             console.error(err);
+            setSyncStatus('sync_error');
           }
         }
       } else {
@@ -877,26 +947,38 @@ export const AppProvider = ({ children }) => {
 
         if (isSupabaseConfigured && supabase) {
           try {
-            await Promise.all([
-              supabase.from('appointments').update({
-                status: 'ready_for_pickup',
-                donor_arrived_at: now,
-                storage_slot: storageSlot
-              }).eq('id', aptId),
-              supabase.from('items').update({
-                status: 'stored',
-                storage_slot: storageSlot,
-                quality_check: { passed: true, note, checkedBy: currentUser.id }
-              }).eq('id', apt.itemId)
-            ]);
+            const { error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
+              p_apt_id: aptId,
+              p_passed: true,
+              p_note: note,
+              p_storage_slot: storageSlot,
+              p_checker_id: currentUser.id
+            });
+
+            if (rpcErr) {
+              await Promise.all([
+                supabase.from('appointments').update({
+                  status: 'ready_for_pickup',
+                  donor_arrived_at: now,
+                  storage_slot: storageSlot
+                }).eq('id', aptId),
+                supabase.from('items').update({
+                  status: 'stored',
+                  storage_slot: storageSlot,
+                  quality_check: { passed: true, note, checkedBy: currentUser.id }
+                }).eq('id', apt.itemId)
+              ]);
+            }
           } catch (err) {
             console.error(err);
+            setSyncStatus('sync_error');
           }
         }
       }
 
       addLog('KIỂM TRA ĐẠT & LƯU TRẠM', `Kiểm tra đạt món ${apt.itemId} tại trạm. Đã lưu ô ${storageSlot || 'Bàn giao trực tiếp'}. Người kiểm tra: ${currentUser.name}.`);
       showNotification(`Món ${apt.itemId} ĐẠT kiểm tra! Sẵn sàng bàn giao cho người nhận.`, 'success');
+      return true;
     } else {
       setAppointments(prev => prev.map(a => {
         if (a.id === aptId) {
@@ -925,22 +1007,34 @@ export const AppProvider = ({ children }) => {
 
       if (isSupabaseConfigured && supabase) {
         try {
-          await Promise.all([
-            supabase.from('appointments').update({ status: 'failed_inspection' }).eq('id', aptId),
-            supabase.from('items').update({
-              status: 'rejected',
-              reject_reason: `Không đạt kiểm tra thực tế: ${note}`,
-              quality_check: { passed: false, note, checkedBy: currentUser.id }
-            }).eq('id', apt.itemId)
-          ]);
+          const { error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
+            p_apt_id: aptId,
+            p_passed: false,
+            p_note: note,
+            p_storage_slot: null,
+            p_checker_id: currentUser.id
+          });
+
+          if (rpcErr) {
+            await Promise.all([
+              supabase.from('appointments').update({ status: 'failed_inspection' }).eq('id', aptId),
+              supabase.from('items').update({
+                status: 'rejected',
+                reject_reason: `Không đạt kiểm tra thực tế: ${note}`,
+                quality_check: { passed: false, note, checkedBy: currentUser.id }
+              }).eq('id', apt.itemId)
+            ]);
+          }
         } catch (err) {
           console.error(err);
+          setSyncStatus('sync_error');
         }
       }
+      return false;
     }
   };
 
-  // Tab E: Bàn giao đồ & Vô hiệu hóa mã nhận
+  // Tab E: Bàn giao đồ & Vô hiệu hóa mã nhận - Hỗ trợ RPC giao dịch nguyên tử
   const completeHandover = async (enteredCode) => {
     const trimmedCode = enteredCode.trim().toUpperCase();
     const apt = appointments.find(a => a.pickupCode.toUpperCase() === trimmedCode);
@@ -950,7 +1044,7 @@ export const AppProvider = ({ children }) => {
     }
 
     if (apt.status === 'completed') {
-      return { success: false, message: 'Mã nhận đồ này ĐÃ ĐƯỢC SỬ DỤNG trước đó và đã bị vô hiệu hóa!' };
+      return { success: false, message: 'Mã nhận đồ này ĐÃ ĐƯỢC BÀN GIAO trước đó và đã bị vô hiệu hóa an toàn!' };
     }
 
     if (apt.status === 'cancelled' || apt.status === 'failed_inspection') {
@@ -992,19 +1086,27 @@ export const AppProvider = ({ children }) => {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await Promise.all([
-          supabase.from('appointments').update({
-            status: 'completed',
-            picked_up_at: now,
-            storage_slot: null
-          }).eq('id', apt.id),
-          supabase.from('items').update({
-            status: 'completed',
-            storage_slot: null
-          }).eq('id', apt.itemId)
-        ]);
+        const { error: rpcErr } = await supabase.rpc('rpc_complete_handover', {
+          p_pickup_code: trimmedCode,
+          p_operator_id: currentUser.id
+        });
+
+        if (rpcErr) {
+          await Promise.all([
+            supabase.from('appointments').update({
+              status: 'completed',
+              picked_up_at: now,
+              storage_slot: null
+            }).eq('id', apt.id),
+            supabase.from('items').update({
+              status: 'completed',
+              storage_slot: null
+            }).eq('id', apt.itemId)
+          ]);
+        }
       } catch (err) {
         console.error(err);
+        setSyncStatus('sync_error');
       }
     }
 
@@ -1033,6 +1135,9 @@ export const AppProvider = ({ children }) => {
         isSupabaseConfigured,
         dbConnected,
         isSyncing,
+        syncStatus,
+        syncError,
+        loadDataFromSupabase,
         users: USERS,
         items,
         requests,
