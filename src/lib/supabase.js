@@ -1,9 +1,54 @@
 import { createClient } from '@supabase/supabase-js';
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const getEnvVar = (key) => {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) return import.meta.env[key];
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  return '';
+};
+
+const rawUrl = getEnvVar('VITE_SUPABASE_URL').trim();
 // Tự động chuẩn hóa nếu người dùng copy nhầm cả đuôi /rest/v1/
 const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY').trim();
+
+// =========================================================================
+// CƠ CHẾ KIỂM SOÁT AN TOÀN RANH GIỚI MÔI TRƯỜNG (ENVIRONMENT SAFETY GUARD)
+// =========================================================================
+export const PRODUCTION_PROJECT_ID = 'vepuogmvrnhpwneufjff';
+export const STAGING_PROJECT_ID = 'ynkhukeqdqewakrqtvtu';
+
+export const getSupabaseProjectId = (url = supabaseUrl) => {
+  try {
+    const match = (url || '').match(/^https?:\/\/([^.]+)\.supabase\.co/);
+    return match ? match[1] : '';
+  } catch {
+    return '';
+  }
+};
+
+export const CURRENT_PROJECT_ID = getSupabaseProjectId(supabaseUrl);
+
+export const isStagingEnvironment = () => {
+  return CURRENT_PROJECT_ID === STAGING_PROJECT_ID;
+};
+
+export const isProductionEnvironment = () => {
+  return CURRENT_PROJECT_ID === PRODUCTION_PROJECT_ID;
+};
+
+/**
+ * Kiểm tra an toàn bắt buộc trước khi thực hiện các thao tác thử nghiệm / migration.
+ * TỪ CHỐI 100% nếu phát hiện ứng dụng đang trỏ vào Production ID.
+ */
+export const assertStagingSafety = (operationName = 'Thao tác Staging') => {
+  const currentId = getSupabaseProjectId(supabaseUrl);
+  if (currentId === PRODUCTION_PROJECT_ID) {
+    const errorMsg = `[NGĂN CHẶN NGUY HIỂM] ${operationName} bị TỪ CHỐI TUYỆT ĐỐI! Ứng dụng đang kết nối Production database (${PRODUCTION_PROJECT_ID}). Thao tác chỉ được phép trên Staging (${STAGING_PROJECT_ID}).`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+  return true;
+};
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -11,6 +56,17 @@ export const isSupabaseConfigured = Boolean(
   supabaseUrl.startsWith('https://') &&
   !supabaseUrl.includes('your-project-id')
 );
+
+// Log thông báo định danh môi trường đang kết nối
+if (isSupabaseConfigured) {
+  if (isStagingEnvironment()) {
+    console.info(`%c[LÊ LỢI LOOP] Đang kết nối SUPABASE STAGING (${CURRENT_PROJECT_ID}) - An toàn cho thử nghiệm.`, 'color: #10b981; font-weight: bold;');
+  } else if (isProductionEnvironment()) {
+    console.warn(`%c[LÊ LỢI LOOP] CẢNH BÁO: Đang kết nối SUPABASE PRODUCTION (${CURRENT_PROJECT_ID}). Cấm chạy thao tác thử nghiệm!`, 'color: #ef4444; font-weight: bold;');
+  } else {
+    console.info(`[LÊ LỢI LOOP] Supabase Project: ${CURRENT_PROJECT_ID || 'Unknown'}`);
+  }
+}
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -23,12 +79,13 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
-// Sinh mã định danh phân tán chống trùng lặp tuyệt đối giữa nhiều thiết bị
+// Sinh mã định danh phân tán chống trùng lặp tuyệt đối giữa nhiều thiết bị (16 ký tự hex ~ 1.8e19 entropy)
 export const genUniqueId = (prefix = 'ID') => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const rawHex = crypto.randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase();
+    return `${prefix}-${rawHex}`;
   }
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000000).toString(36).toUpperCase()}`;
 };
 
 // Helpers để chuẩn hóa tên cột giữa CamelCase (React) và SnakeCase (PostgreSQL)

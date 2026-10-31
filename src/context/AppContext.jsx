@@ -106,6 +106,107 @@ export const AppProvider = ({ children }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState('syncing'); // 'synced' | 'syncing' | 'sync_error' | 'offline'
   const [syncError, setSyncError] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [inFlightOps, setInFlightOps] = useState(new Set());
+
+  const openAuthModal = () => setIsAuthModalOpen(true);
+  const closeAuthModal = () => setIsAuthModalOpen(false);
+
+  // Hàm ánh xạ hồ sơ người dùng từ Auth session qua bảng profiles / metadata
+  const resolveUserProfile = useCallback(async (user) => {
+    if (!user) return null;
+    if (isSupabaseConfigured && supabase) {
+      // 1. Tra cứu bảng profiles theo auth_user_id (UUID)
+      try {
+        const { data: prof, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+        if (!error && prof) {
+          return {
+            id: prof.legacy_user_id || prof.auth_user_id,
+            name: prof.full_name,
+            role: prof.role,
+            class: prof.class || '',
+            shift: prof.shift || 'Sáng',
+            avatar: prof.avatar || USERS[0].avatar,
+            phone: prof.phone || '',
+            points: prof.points || 0
+          };
+        }
+      } catch (e) {
+        console.warn('Tra cứu bảng profiles:', e.message);
+      }
+
+      // 2. Tra cứu bảng users theo metadata legacy_id
+      try {
+        const legacyId = user.user_metadata?.student_id || user.user_metadata?.legacy_id;
+        if (legacyId) {
+          const { data: u, error } = await supabase.from('users').select('*').eq('id', legacyId).maybeSingle();
+          if (!error && u) return u;
+        }
+      } catch (e) {
+        console.warn('Tra cứu bảng users:', e.message);
+      }
+    }
+
+    // 3. Fallback an toàn theo user_metadata hoặc danh mục USERS
+    const matchedUser = USERS.find(u => u.id === user.user_metadata?.student_id) || {
+      id: user.id.slice(0, 8).toUpperCase(),
+      name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Người dùng',
+      role: user.user_metadata?.role || 'student',
+      class: user.user_metadata?.class || '',
+      shift: user.user_metadata?.shift || 'Sáng',
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+      phone: '',
+      points: 0
+    };
+    return matchedUser;
+  }, []);
+
+  // Lắng nghe trạng thái đăng nhập Supabase Auth
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    // 1. Kiểm tra session hiện tại
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        setAuthUser(session.user);
+        const resolved = await resolveUserProfile(session.user);
+        if (resolved) {
+          setCurrentUser(resolved);
+        }
+      }
+    });
+
+    // 2. Lắng nghe thay đổi auth state
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setAuthUser(session.user);
+        const resolved = await resolveUserProfile(session.user);
+        if (resolved) {
+          setCurrentUser(resolved);
+        }
+      } else {
+        setAuthUser(null);
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [resolveUserProfile]);
+
+  const signOut = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    }
+    setAuthUser(null);
+    showNotification('Đã đăng xuất khỏi tài khoản!', 'info');
+  };
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type, id: Date.now() });
@@ -358,15 +459,47 @@ export const AppProvider = ({ children }) => {
     return newNotif;
   };
 
-  const markNotificationAsRead = (id) => {
+  const markNotificationAsRead = async (id) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+      } catch (e) {
+        console.warn('Supabase markNotificationAsRead error:', e);
+      }
+    }
   };
 
-  const markAllNotificationsAsRead = () => {
+  const markAllNotificationsAsRead = async () => {
     setNotifications(prev => prev.map(n => n.recipientId === currentUser.id ? { ...n, isRead: true } : n));
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('notifications').update({ is_read: true }).eq('recipient_id', currentUser.id);
+      } catch (e) {
+        console.warn('Supabase markAllNotificationsAsRead error:', e);
+      }
+    }
   };
 
   const switchRole = (userId) => {
+    // Nếu đang kết nối Cloud Supabase và đã đăng nhập bằng Auth:
+    // Chặn học sinh tự ý chuyển sang tài khoản giáo viên/quản sinh qua RoleSwitcher!
+    if (isSupabaseConfigured && authUser) {
+      showNotification('Hệ thống đang hoạt động với phiên Supabase Auth. Để đổi vai trò, vui lòng Đăng xuất và Đăng nhập bằng tài khoản tương ứng.', 'warning');
+      openAuthModal();
+      return;
+    }
+
+    // Nếu chưa đăng nhập Auth trên Cloud: chặn truy cập trái phép vai trò nhạy cảm
+    if (isSupabaseConfigured) {
+      const target = USERS.find(u => u.id === userId);
+      if (target && (target.role === 'teacher' || target.role === 'station_staff' || target.role === 'admin')) {
+        showNotification('Vai trò Giáo viên/Quản sinh yêu cầu đăng nhập qua Supabase Auth để bảo mật!', 'warning');
+        openAuthModal();
+        return;
+      }
+    }
+
     const target = USERS.find(u => u.id === userId);
     if (target) {
       setCurrentUser(target);
@@ -374,13 +507,13 @@ export const AppProvider = ({ children }) => {
       if (userUnread.length > 0) {
         showNotification(`🔔 ${target.name} có ${userUnread.length} thông báo mới! (Yêu cầu gần nhất: ${userUnread[0].message})`, 'info');
       } else {
-        showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
+        showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}] (Chế độ mô phỏng)`, 'info');
       }
       addLog('CHUYỂN ĐỔI VAI TRÒ', `Người dùng chuyển sang đóng vai ${target.name} (${target.id})`);
     }
   };
 
-  // Đăng món đồ mới (HS) - Chống xung đột ID phân tán
+  // Đăng món đồ mới (HS) - Cloud-First: Chỉ cập nhật state sau khi Database xác nhận
   const addItem = async (itemData) => {
     const newId = genUniqueId('M');
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
@@ -397,29 +530,55 @@ export const AppProvider = ({ children }) => {
       storageSlot: null
     };
 
-    setItems(prev => [newItem, ...prev]);
-
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase.from('items').insert([mapItemToDb(newItem)]);
-        if (error) throw error;
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lưu Cloud thất bại: ${error.message}. Món đồ KHÔNG được đăng.`, 'error');
+          return null;
+        }
+        setItems(prev => [newItem, ...prev]);
         addLog('ĐĂNG MÓN MỚI', `Học sinh ${currentUser.name} (${currentUser.id}) gửi đăng món "${newItem.title}" qua hình thức ${newItem.inputMethod === 'website' ? 'Website' : 'Phiếu giấy'}.`);
         showNotification('Đăng món thành công! Món đồ đang ở trạng thái Chờ duyệt thông tin.', 'success');
+        return newId;
       } catch (err) {
         console.error('Supabase addItem error:', err);
         setSyncStatus('sync_error');
-        showNotification(`Lưu Cloud lỗi: ${err.message}. Đã lưu bản nháp an toàn cục bộ.`, 'warning');
+        showNotification(`Lỗi kết nối Cloud: ${err.message}. Món đồ không được lưu.`, 'error');
+        return null;
       }
     } else {
+      setItems(prev => [newItem, ...prev]);
       addLog('ĐĂNG MÓN MỚI (LOCAL)', `Học sinh ${currentUser.name} (${currentUser.id}) đăng món "${newItem.title}".`);
       showNotification('Đăng món thành công (Chế độ cục bộ)!', 'info');
+      return newId;
     }
-
-    return newId;
   };
 
-  // Phê duyệt món đồ (GV / Đội trực)
+  // Phê duyệt món đồ (GV / Đội trực) - Cloud-First
   const approveItem = async (itemId) => {
+    if (currentUser.role !== 'teacher' && currentUser.role !== 'station_staff' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Chỉ Giáo viên hoặc Quản sinh mới có quyền phê duyệt bài đăng!', 'error');
+      return;
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', itemId);
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi phê duyệt trên Cloud: ${error.message}`, 'error');
+          return;
+        }
+      } catch (err) {
+        console.error('Supabase approveItem error:', err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi duyệt món: ${err.message}`, 'error');
+        return;
+      }
+    }
+
     setItems(prev => prev.map(item => {
       if (item.id === itemId) {
         return { ...item, status: 'approved', requestStatus: 'open' };
@@ -429,18 +588,31 @@ export const AppProvider = ({ children }) => {
     const itm = items.find(i => i.id === itemId);
     addLog('DUYỆT BÀI ĐĂNG', `Đã duyệt bài đăng món ${itemId} (${itm?.title || ''}). Món đồ hiện đã công khai trên Kho đồ.`);
     showNotification(`Đã phê duyệt món ${itemId} hiển thị trên Kho đồ!`, 'success');
+  };
+
+  // Từ chối bài đăng - Cloud-First
+  const rejectItem = async (itemId, reason) => {
+    if (currentUser.role !== 'teacher' && currentUser.role !== 'station_staff' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Chỉ Giáo viên hoặc Quản sinh mới có quyền từ chối bài đăng!', 'error');
+      return;
+    }
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', itemId);
+        const { error } = await supabase.from('items').update({ status: 'rejected', request_status: 'closed', reject_reason: reason }).eq('id', itemId);
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi từ chối bài đăng trên Cloud: ${error.message}`, 'error');
+          return;
+        }
       } catch (err) {
-        console.error('Supabase approveItem error:', err);
+        console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi từ chối món: ${err.message}`, 'error');
+        return;
       }
     }
-  };
 
-  // Từ chối bài đăng
-  const rejectItem = async (itemId, reason) => {
     setItems(prev => prev.map(item => {
       if (item.id === itemId) {
         return { ...item, status: 'rejected', requestStatus: 'closed', rejectReason: reason };
@@ -448,19 +620,32 @@ export const AppProvider = ({ children }) => {
       return item;
     }));
     addLog('TỪ CHỐI BÀI ĐĂNG', `Từ chối món ${itemId}. Lý do: ${reason}`);
-    showNotification(`Đã từ chối bài đăng ${itemId}.`, 'error');
+    showNotification(`Đã từ chối bài đăng ${itemId}.`, 'info');
+  };
+
+  // Yêu cầu bổ sung thông tin - Cloud-First
+  const requestItemUpdate = async (itemId, note) => {
+    if (currentUser.role !== 'teacher' && currentUser.role !== 'station_staff' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Chỉ Giáo viên hoặc Quản sinh mới có quyền yêu cầu bổ sung!', 'error');
+      return;
+    }
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('items').update({ status: 'rejected', request_status: 'closed', reject_reason: reason }).eq('id', itemId);
+        const { error } = await supabase.from('items').update({ status: 'needs_update', update_note: note }).eq('id', itemId);
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi yêu cầu bổ sung trên Cloud: ${error.message}`, 'error');
+          return;
+        }
       } catch (err) {
         console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi yêu cầu bổ sung: ${err.message}`, 'error');
+        return;
       }
     }
-  };
 
-  // Yêu cầu bổ sung thông tin
-  const requestItemUpdate = async (itemId, note) => {
     setItems(prev => prev.map(item => {
       if (item.id === itemId) {
         return { ...item, status: 'needs_update', updateNote: note };
@@ -469,18 +654,16 @@ export const AppProvider = ({ children }) => {
     }));
     addLog('YÊU CẦU BỔ SUNG', `Yêu cầu bổ sung ảnh/thông tin món ${itemId}: ${note}`);
     showNotification(`Đã gửi yêu cầu bổ sung cho món ${itemId}.`, 'warning');
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('items').update({ status: 'needs_update', update_note: note }).eq('id', itemId);
-      } catch (err) {
-        console.error(err);
-      }
-    }
   };
 
-  // Gửi yêu cầu nhận đồ (HS) - Kiểm tra chống duplicate request
+  // Gửi yêu cầu nhận đồ (HS) - Cloud-First: Chống duplicate & Kiểm tra DB trước
   const addRequest = async (itemId, reason, availableSlots, inputMethod = 'website') => {
+    const itm = items.find(i => i.id === itemId);
+    if (itm && itm.donorId === currentUser.id) {
+      showNotification('Bạn không thể gửi yêu cầu nhận món đồ do chính mình đăng!', 'warning');
+      return null;
+    }
+
     // 1. Chống duplicate request ngay tại client
     const existing = requests.find(r => r.itemId === itemId && r.requesterId === currentUser.id && r.status !== 'rejected');
     if (existing) {
@@ -505,33 +688,30 @@ export const AppProvider = ({ children }) => {
       createdAt: now
     };
 
-    setRequests(prev => [newReq, ...prev]);
-    const itm = items.find(i => i.id === itemId);
-
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase.from('requests').insert([mapRequestToDb(newReq)]);
         if (error) {
+          setSyncStatus('sync_error');
           if (error.code === '23505') {
-            showNotification('Yêu cầu đã tồn tại trong hệ thống Database (Chống trùng lặp)!', 'warning');
+            showNotification('Yêu cầu đã tồn tại trong hệ thống (Chống trùng lặp Database)!', 'warning');
           } else {
-            throw error;
+            showNotification(`Lỗi lưu Cloud: ${error.message}. Yêu cầu không được gửi.`, 'error');
           }
-        } else {
-          addLog('GỬI YÊU CẦU NHẬN', `Học sinh ${currentUser.name} (${currentUser.id}) gửi yêu cầu nhận món ${itemId} (${itm?.title || ''}).`);
-          showNotification('Đã gửi yêu cầu nhận đồ thành công lên Cloud. Vui lòng theo dõi kết quả!', 'success');
+          return null;
         }
       } catch (err) {
-        console.error('Supabase addRequest error:', err);
         setSyncStatus('sync_error');
-        showNotification(`Lỗi lưu Cloud: ${err.message}`, 'error');
+        showNotification(`Lỗi kết nối Cloud: ${err.message}`, 'error');
+        return null;
       }
-    } else {
-      addLog('GỬI YÊU CẦU NHẬN (LOCAL)', `Học sinh ${currentUser.name} gửi yêu cầu nhận món ${itemId}.`);
-      showNotification('Đã gửi yêu cầu nhận đồ thành công (Cục bộ)!', 'info');
     }
 
-    // TỰ ĐỘNG BẮN THÔNG BÁO ĐẾN NGƯỜI CHO (NGƯỜI B)
+    setRequests(prev => [newReq, ...prev]);
+    addLog('GỬI YÊU CẦU NHẬN', `Học sinh ${currentUser.name} (${currentUser.id}) gửi yêu cầu nhận món ${itemId} (${itm?.title || ''}).`);
+    showNotification('Đã gửi yêu cầu nhận đồ thành công lên Cloud. Vui lòng theo dõi kết quả!', 'success');
+
+    // TỰ ĐỘNG GỬI THÔNG BÁO ĐẾN NGƯỜI CHO
     if (itm && itm.donorId && itm.donorId !== currentUser.id) {
       createNotification({
         recipientId: itm.donorId,
@@ -548,8 +728,31 @@ export const AppProvider = ({ children }) => {
     return newId;
   };
 
-  // Đóng đợt đăng ký của 1 món
+  // Đóng đợt đăng ký của 1 món - Cloud-First
   const closeItemRegistration = async (itemId) => {
+    if (currentUser.role !== 'teacher' && currentUser.role !== 'station_staff' && currentUser.role !== 'admin') {
+      const itm = items.find(i => i.id === itemId);
+      if (!itm || itm.donorId !== currentUser.id) {
+        showNotification('Từ chối quyền: Bạn không có quyền đóng đợt nhận yêu cầu cho món này!', 'error');
+        return;
+      }
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('items').update({ request_status: 'closed' }).eq('id', itemId);
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi đóng đợt đăng ký trên Cloud: ${error.message}`, 'error');
+          return;
+        }
+      } catch (err) {
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối Cloud: ${err.message}`, 'error');
+        return;
+      }
+    }
+
     setItems(prev => prev.map(item => {
       if (item.id === itemId) {
         return { ...item, requestStatus: 'closed' };
@@ -558,18 +761,15 @@ export const AppProvider = ({ children }) => {
     }));
     addLog('ĐÓNG ĐỢT ĐĂNG KÝ', `Đóng nhận thêm yêu cầu cho món ${itemId} để tiến hành xét chọn.`);
     showNotification(`Đã đóng đợt nhận yêu cầu cho món ${itemId}.`, 'info');
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('items').update({ request_status: 'closed' }).eq('id', itemId);
-      } catch (err) {
-        console.error(err);
-      }
-    }
   };
 
-  // Bốc thăm xét chọn người nhận
+  // Bốc thăm xét chọn người nhận - Cloud-First
   const conductLottery = async (itemId, seed = 'LE-LOI-LOOP-KHKT-2026') => {
+    if (currentUser.role !== 'teacher' && currentUser.role !== 'station_staff' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Chỉ Giáo viên hoặc Quản sinh mới có quyền kích hoạt bốc thăm!', 'error');
+      return;
+    }
+
     const itemRequests = requests.filter(r => r.itemId === itemId && r.status !== 'rejected');
     if (itemRequests.length === 0) {
       showNotification('Không có yêu cầu nào hợp lệ để bốc thăm!', 'error');
@@ -577,7 +777,30 @@ export const AppProvider = ({ children }) => {
     }
 
     const rankedRequests = runLotteryWithSeed(itemRequests, seed);
-    
+    const winner = rankedRequests.find(r => r.status === 'selected');
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const reqUpdates = rankedRequests.map(rr => 
+          supabase.from('requests').update({ status: rr.status, lottery_rank: rr.lotteryRank }).eq('id', rr.id)
+        );
+        const itemUpdate = supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', itemId);
+
+        const results = await Promise.all([...reqUpdates, itemUpdate]);
+        const hasError = results.some(res => res.error);
+        if (hasError) {
+          setSyncStatus('sync_error');
+          showNotification('Lỗi lưu kết quả bốc thăm lên Cloud Database!', 'error');
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi bốc thăm: ${err.message}`, 'error');
+        return;
+      }
+    }
+
     setRequests(prev => prev.map(r => {
       const match = rankedRequests.find(rr => rr.id === r.id);
       return match ? match : r;
@@ -590,26 +813,40 @@ export const AppProvider = ({ children }) => {
       return item;
     }));
 
-    const winner = rankedRequests.find(r => r.status === 'selected');
     addLog('BỐC THĂM XÉT CHỌN', `Bốc thăm ngẫu nhiên (Seed: ${seed}) cho món ${itemId}: Chọn chính thức học sinh ${winner?.requesterName} (${winner?.requesterId}), ${rankedRequests.length - 1} học sinh dự phòng.`);
     showNotification(`Đã chọn được người nhận chính thức: ${winner?.requesterName} (${winner?.requesterId})!`, 'success');
+  };
+
+  // Chọn thủ công 1 người nhận (GV / Trực trạm) - Cloud-First
+  const selectRecipientManually = async (requestId) => {
+    if (currentUser.role !== 'teacher' && currentUser.role !== 'station_staff' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Chỉ Giáo viên hoặc Quản sinh mới có quyền chọn người nhận thủ công!', 'error');
+      return;
+    }
+
+    const req = requests.find(r => r.id === requestId);
+    if (!req) return;
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await Promise.all([
-          ...rankedRequests.map(rr => supabase.from('requests').update({ status: rr.status, lottery_rank: rr.lotteryRank }).eq('id', rr.id)),
-          supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', itemId)
+        const [winnerRes, backupRes, itemRes] = await Promise.all([
+          supabase.from('requests').update({ status: 'selected', lottery_rank: 1 }).eq('id', requestId),
+          supabase.from('requests').update({ status: 'backup', lottery_rank: 2 }).eq('item_id', req.itemId).neq('id', requestId),
+          supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', req.itemId)
         ]);
+
+        if (winnerRes.error || backupRes.error || itemRes.error) {
+          setSyncStatus('sync_error');
+          showNotification('Lỗi cập nhật người nhận trên Cloud Database!', 'error');
+          return;
+        }
       } catch (err) {
         console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối Cloud: ${err.message}`, 'error');
+        return;
       }
     }
-  };
-
-  // Chọn thủ công 1 người nhận
-  const selectRecipientManually = async (requestId) => {
-    const req = requests.find(r => r.id === requestId);
-    if (!req) return;
 
     setRequests(prev => prev.map(r => {
       if (r.itemId === req.itemId) {
@@ -631,26 +868,40 @@ export const AppProvider = ({ children }) => {
 
     addLog('CHỌN NGƯỜI NHẬN', `Giáo viên/Đội trực đã duyệt chọn thủ công bạn ${req.requesterName} (${req.requesterId}) nhận món ${req.itemId}.`);
     showNotification(`Đã duyệt trao món ${req.itemId} cho bạn ${req.requesterName}!`, 'success');
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await Promise.all([
-          supabase.from('requests').update({ status: 'selected', lottery_rank: 1 }).eq('id', requestId),
-          supabase.from('requests').update({ status: 'backup', lottery_rank: 2 }).eq('item_id', req.itemId).neq('id', requestId),
-          supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', req.itemId)
-        ]);
-      } catch (err) {
-        console.error(err);
-      }
-    }
   };
 
-  // Người cho (Donor B) đồng ý trao món đồ cho Người nhận (A) - Hỗ trợ Stored Procedure RPC
+  // Người cho (Donor B) đồng ý trao món đồ cho Người nhận (A) - Cloud-First qua RPC nguyên tử
   const acceptRequestByDonor = async (requestId) => {
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
     const itm = items.find(i => i.id === req.itemId);
 
+    // Xác minh quyền: Bắt buộc là người đăng món (donor_id) hoặc giáo viên/admin
+    if (itm && itm.donorId !== currentUser.id && currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Bạn không phải người đăng món đồ này!', 'error');
+      return;
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc('rpc_accept_request_by_donor', {
+          p_request_id: requestId
+        });
+
+        if (rpcErr) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi giao dịch Cloud (RPC): ${rpcErr.message}. Thao tác bị hủy để bảo đảm an toàn dữ liệu.`, 'error');
+          return;
+        }
+      } catch (err) {
+        console.error('Supabase acceptRequestByDonor error:', err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối RPC: ${err.message}`, 'error');
+        return;
+      }
+    }
+
+    // Chỉ cập nhật state khi DB/RPC đã xác nhận thành công
     setRequests(prev => prev.map(r => {
       if (r.itemId === req.itemId) {
         return {
@@ -672,7 +923,6 @@ export const AppProvider = ({ children }) => {
     addLog('NGƯỜI CHO ĐỒNG Ý TRAO', `Người tặng ${currentUser.name} (${currentUser.id}) đã đồng ý trao tặng món "${itm?.title || req.itemId}" cho bạn ${req.requesterName} (${req.requesterId}). Chuyển sang khâu xếp lịch LoopMatch.`);
     showNotification(`Bạn đã đồng ý trao tặng món đồ cho ${req.requesterName}! Chuyển sang điều phối lịch.`, 'success');
 
-    // TỰ ĐỘNG BẮN THÔNG BÁO CHO BẠN A (NGƯỜI NHẬN)
     createNotification({
       recipientId: req.requesterId,
       senderId: currentUser.id,
@@ -683,32 +933,35 @@ export const AppProvider = ({ children }) => {
       itemId: req.itemId,
       requestId: req.id
     });
+  };
+
+  // Người cho (Donor B) từ chối yêu cầu từ Người nhận - Cloud-First
+  const rejectRequestByDonor = async (requestId, reason = 'Người cho đã chọn ứng viên khác') => {
+    const req = requests.find(r => r.id === requestId);
+    if (!req) return;
+    const itm = items.find(i => i.id === req.itemId);
+
+    if (itm && itm.donorId !== currentUser.id && currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Bạn không phải người đăng món đồ này!', 'error');
+      return;
+    }
 
     if (isSupabaseConfigured && supabase) {
       try {
-        // Ưu tiên gọi Stored Procedure RPC để đảm bảo tính nguyên tử ACID
-        const { error: rpcErr } = await supabase.rpc('rpc_accept_request_by_donor', {
-          p_request_id: requestId,
-          p_donor_id: currentUser.id
-        });
-
-        if (rpcErr) {
-          // Fallback sang cập nhật song song nếu RPC chưa được chạy migration
-          await Promise.all([
-            supabase.from('requests').update({ status: 'selected', lottery_rank: 1 }).eq('id', requestId),
-            supabase.from('requests').update({ status: 'backup', lottery_rank: 2 }).eq('item_id', req.itemId).neq('id', requestId),
-            supabase.from('items').update({ status: 'matching', request_status: 'closed' }).eq('id', req.itemId)
-          ]);
+        const { error } = await supabase.from('requests').update({ status: 'rejected' }).eq('id', requestId);
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi từ chối yêu cầu trên Cloud: ${error.message}`, 'error');
+          return;
         }
       } catch (err) {
-        console.error('Supabase acceptRequestByDonor error:', err);
+        console.error(err);
         setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối Cloud: ${err.message}`, 'error');
+        return;
       }
     }
-  };
 
-  // Người cho (Donor B) từ chối yêu cầu từ Người nhận
-  const rejectRequestByDonor = async (requestId, reason = 'Người cho đã chọn ứng viên khác') => {
     setRequests(prev => prev.map(r => {
       if (r.id === requestId) {
         return { ...r, status: 'rejected', rejectReason: reason };
@@ -716,20 +969,11 @@ export const AppProvider = ({ children }) => {
       return r;
     }));
 
-    const req = requests.find(r => r.id === requestId);
     addLog('TỪ CHỐI YÊU CẦU NHẬN', `Người tặng ${currentUser.name} từ chối yêu cầu của ${req?.requesterName} cho món ${req?.itemId}. Lý do: ${reason}`);
     showNotification(`Đã từ chối yêu cầu nhận của ${req?.requesterName}.`, 'info');
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('requests').update({ status: 'rejected' }).eq('id', requestId);
-      } catch (err) {
-        console.error(err);
-      }
-    }
   };
 
-  // Điều phối & Chốt lịch hẹn (Tạo appointment) - Sinh ID phân tán
+  // Điều phối & Chốt lịch hẹn (Tạo appointment) - Cloud-First
   const confirmAppointment = async ({
     itemId,
     requestId,
@@ -760,6 +1004,26 @@ export const AppProvider = ({ children }) => {
       notes: notes || (type === 'direct' ? 'Trao nhận trực tiếp cùng ca tại trạm.' : 'Người cho gửi đồ trước, trạm cất giữ, người nhận đến lấy sau.')
     };
 
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const [aptRes, itemRes] = await Promise.all([
+          supabase.from('appointments').insert([mapAppointmentToDb(newAppointment)]),
+          supabase.from('items').update({ status: 'matching' }).eq('id', itemId)
+        ]);
+
+        if (aptRes.error || itemRes.error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi lưu lịch hẹn lên Cloud Database: ${(aptRes.error || itemRes.error).message}`, 'error');
+          return null;
+        }
+      } catch (err) {
+        console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi chốt lịch: ${err.message}`, 'error');
+        return null;
+      }
+    }
+
     setAppointments(prev => [newAppointment, ...prev]);
 
     setItems(prev => prev.map(item => {
@@ -772,22 +1036,32 @@ export const AppProvider = ({ children }) => {
     addLog('CHỐT LỊCH HẸN', `Chốt lịch hẹn ${aptId} cho món ${itemId}. Mã nhận đồ phát hành: ${pickupCode}. Hình thức: ${type === 'direct' ? 'Trực tiếp' : 'Lưu tạm'}.`);
     showNotification(`Đã chốt lịch hẹn thành công! Mã nhận: ${pickupCode}`, 'success');
 
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await Promise.all([
-          supabase.from('appointments').insert([mapAppointmentToDb(newAppointment)]),
-          supabase.from('items').update({ status: 'matching' }).eq('id', itemId)
-        ]);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
     return newAppointment;
   };
 
-  // Đổi lịch hẹn
+  // Đổi lịch hẹn - Cloud-First
   const rescheduleAppointment = async (aptId, newDonorSlot, newRequesterSlot, newType) => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('appointments').update({
+          donor_slot: newDonorSlot,
+          requester_slot: newRequesterSlot,
+          type: newType
+        }).eq('id', aptId);
+
+        if (error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi đổi lịch hẹn trên Cloud: ${error.message}`, 'error');
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi đổi lịch: ${err.message}`, 'error');
+        return;
+      }
+    }
+
     setAppointments(prev => prev.map(apt => {
       if (apt.id === aptId) {
         return {
@@ -802,63 +1076,65 @@ export const AppProvider = ({ children }) => {
     }));
     addLog('ĐỔI LỊCH HẸN', `Cập nhật lại lịch hẹn cho mã ${aptId}.`);
     showNotification(`Đã cập nhật lịch hẹn ${aptId}.`, 'info');
+  };
+
+  // Hủy lịch hẹn - Cloud-First
+  const cancelAppointment = async (aptId, reason) => {
+    const apt = appointments.find(a => a.id === aptId);
+    if (!apt) return;
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('appointments').update({
-          donor_slot: newDonorSlot,
-          requester_slot: newRequesterSlot,
-          type: newType
-        }).eq('id', aptId);
+        const [aptRes, itemRes] = await Promise.all([
+          supabase.from('appointments').update({ status: 'cancelled' }).eq('id', aptId),
+          supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', apt.itemId)
+        ]);
+
+        if (aptRes.error || itemRes.error) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi hủy lịch hẹn trên Cloud: ${(aptRes.error || itemRes.error).message}`, 'error');
+          return;
+        }
       } catch (err) {
         console.error(err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối khi hủy lịch: ${err.message}`, 'error');
+        return;
       }
     }
-  };
 
-  // Hủy lịch hẹn
-  const cancelAppointment = async (aptId, reason) => {
-    setAppointments(prev => prev.map(apt => {
-      if (apt.id === aptId) {
-        return { ...apt, status: 'cancelled', cancelReason: reason };
+    setAppointments(prev => prev.map(a => {
+      if (a.id === aptId) {
+        return { ...a, status: 'cancelled', cancelReason: reason };
       }
-      return apt;
+      return a;
     }));
 
-    const apt = appointments.find(a => a.id === aptId);
-    if (apt) {
-      setItems(prev => prev.map(i => {
-        if (i.id === apt.itemId) {
-          return { ...i, status: 'approved', requestStatus: 'open' };
-        }
-        return i;
-      }));
-    }
+    setItems(prev => prev.map(i => {
+      if (i.id === apt.itemId) {
+        return { ...i, status: 'approved', requestStatus: 'open' };
+      }
+      return i;
+    }));
 
     addLog('HỦY LỊCH HẸN', `Hủy lịch hẹn ${aptId}. Lý do: ${reason}`);
     showNotification(`Đã hủy lịch hẹn ${aptId}. Món đồ đã mở lại yêu cầu.`, 'warning');
-
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await Promise.all([
-          supabase.from('appointments').update({ status: 'cancelled' }).eq('id', aptId),
-          apt ? supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', apt.itemId) : null
-        ]);
-      } catch (err) {
-        console.error(err);
-      }
-    }
   };
 
-  // Tab D: Tiếp nhận & Kiểm tra thực tế tại trạm - Chống race condition ô kệ
+  // Tab D: Tiếp nhận & Kiểm tra thực tế tại trạm - Cloud-First qua RPC nguyên tử
   const inspectAndReceiveItem = async ({
     aptId,
     passed,
     note,
     storageSlot
   }) => {
+    if (currentUser.role !== 'station_staff' && currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
+      showNotification('Từ chối quyền: Chỉ Quản sinh Trạm hoặc Giáo viên mới có quyền kiểm định đồ!', 'error');
+      return false;
+    }
+
     const apt = appointments.find(a => a.id === aptId);
-    if (!apt) return;
+    if (!apt) return false;
 
     // Chống Race Condition ô kệ phía client
     if (passed && apt.type !== 'direct' && storageSlot) {
@@ -871,112 +1147,57 @@ export const AppProvider = ({ children }) => {
 
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
-    if (passed) {
-      if (apt.type === 'direct') {
-        setAppointments(prev => prev.map(a => {
-          if (a.id === aptId) {
-            return {
-              ...a,
-              status: 'ready_for_pickup',
-              donorArrivedAt: now,
-              notes: `${a.notes} - Đạt kiểm tra thực tế: ${note}`
-            };
-          }
-          return a;
-        }));
-        setItems(prev => prev.map(i => {
-          if (i.id === apt.itemId) {
-            return {
-              ...i,
-              qualityCheck: { passed: true, note, checkedBy: currentUser.id }
-            };
-          }
-          return i;
-        }));
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
+          p_apt_id: aptId,
+          p_passed: passed,
+          p_note: note,
+          p_storage_slot: passed && apt.type !== 'direct' ? storageSlot : null
+        });
 
-        if (isSupabaseConfigured && supabase) {
-          try {
-            const { error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
-              p_apt_id: aptId,
-              p_passed: true,
-              p_note: note,
-              p_storage_slot: null,
-              p_checker_id: currentUser.id
-            });
-
-            if (rpcErr) {
-              await Promise.all([
-                supabase.from('appointments').update({
-                  status: 'ready_for_pickup',
-                  donor_arrived_at: now
-                }).eq('id', aptId),
-                supabase.from('items').update({
-                  quality_check: { passed: true, note, checkedBy: currentUser.id }
-                }).eq('id', apt.itemId)
-              ]);
-            }
-          } catch (err) {
-            console.error(err);
-            setSyncStatus('sync_error');
-          }
+        if (rpcErr) {
+          setSyncStatus('sync_error');
+          showNotification(`Lỗi giao dịch kiểm định (RPC): ${rpcErr.message}. Thao tác bị hủy.`, 'error');
+          return false;
         }
-      } else {
-        setAppointments(prev => prev.map(a => {
-          if (a.id === aptId) {
-            return {
-              ...a,
-              status: 'ready_for_pickup',
-              donorArrivedAt: now,
-              storageSlot: storageSlot,
-              notes: `${a.notes} - Đã cất ô ${storageSlot}. Ghi chú: ${note}`
-            };
-          }
-          return a;
-        }));
-        setItems(prev => prev.map(i => {
-          if (i.id === apt.itemId) {
-            return {
-              ...i,
-              status: 'stored',
-              storageSlot: storageSlot,
-              qualityCheck: { passed: true, note, checkedBy: currentUser.id }
-            };
-          }
-          return i;
-        }));
-
-        if (isSupabaseConfigured && supabase) {
-          try {
-            const { error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
-              p_apt_id: aptId,
-              p_passed: true,
-              p_note: note,
-              p_storage_slot: storageSlot,
-              p_checker_id: currentUser.id
-            });
-
-            if (rpcErr) {
-              await Promise.all([
-                supabase.from('appointments').update({
-                  status: 'ready_for_pickup',
-                  donor_arrived_at: now,
-                  storage_slot: storageSlot
-                }).eq('id', aptId),
-                supabase.from('items').update({
-                  status: 'stored',
-                  storage_slot: storageSlot,
-                  quality_check: { passed: true, note, checkedBy: currentUser.id }
-                }).eq('id', apt.itemId)
-              ]);
-            }
-          } catch (err) {
-            console.error(err);
-            setSyncStatus('sync_error');
-          }
-        }
+      } catch (err) {
+        console.error('Supabase inspectAndReceiveItem error:', err);
+        setSyncStatus('sync_error');
+        showNotification(`Lỗi kết nối RPC kiểm định: ${err.message}`, 'error');
+        return false;
       }
+    }
 
-      addLog('KIỂM TRA ĐẠT & LƯU TRẠM', `Kiểm tra đạt món ${apt.itemId} tại trạm. Đã lưu ô ${storageSlot || 'Bàn giao trực tiếp'}. Người kiểm tra: ${currentUser.name}.`);
+    // Cập nhật state sau khi DB xác nhận thành công
+    if (passed) {
+      const isDirect = apt.type === 'direct';
+      setAppointments(prev => prev.map(a => {
+        if (a.id === aptId) {
+          return {
+            ...a,
+            status: 'ready_for_pickup',
+            donorArrivedAt: now,
+            storageSlot: isDirect ? null : storageSlot,
+            notes: `${a.notes} - Đạt kiểm tra: ${note}`
+          };
+        }
+        return a;
+      }));
+
+      setItems(prev => prev.map(i => {
+        if (i.id === apt.itemId) {
+          return {
+            ...i,
+            status: isDirect ? 'matching' : 'stored',
+            storageSlot: isDirect ? null : storageSlot,
+            qualityCheck: { passed: true, note, checkedBy: currentUser.id }
+          };
+        }
+        return i;
+      }));
+
+      addLog('KIỂM TRA ĐẠT & LƯU TRẠM', `Kiểm tra đạt món ${apt.itemId} tại trạm. Đã lưu ${isDirect ? 'Bàn giao trực tiếp' : 'ô ' + storageSlot}. Người kiểm tra: ${currentUser.name}.`);
       showNotification(`Món ${apt.itemId} ĐẠT kiểm tra! Sẵn sàng bàn giao cho người nhận.`, 'success');
       return true;
     } else {
@@ -990,6 +1211,7 @@ export const AppProvider = ({ children }) => {
         }
         return a;
       }));
+
       setItems(prev => prev.map(i => {
         if (i.id === apt.itemId) {
           return {
@@ -1004,38 +1226,16 @@ export const AppProvider = ({ children }) => {
 
       addLog('KIỂM TRA KHÔNG ĐẠT', `Món ${apt.itemId} KHÔNG ĐẠT kiểm tra thực tế. Lý do: ${note}. Đã hoàn trả cho người gửi.`);
       showNotification(`Món ${apt.itemId} không đạt kiểm tra. Đã ghi nhận lý do.`, 'error');
-
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const { error: rpcErr } = await supabase.rpc('rpc_inspect_and_receive_item', {
-            p_apt_id: aptId,
-            p_passed: false,
-            p_note: note,
-            p_storage_slot: null,
-            p_checker_id: currentUser.id
-          });
-
-          if (rpcErr) {
-            await Promise.all([
-              supabase.from('appointments').update({ status: 'failed_inspection' }).eq('id', aptId),
-              supabase.from('items').update({
-                status: 'rejected',
-                reject_reason: `Không đạt kiểm tra thực tế: ${note}`,
-                quality_check: { passed: false, note, checkedBy: currentUser.id }
-              }).eq('id', apt.itemId)
-            ]);
-          }
-        } catch (err) {
-          console.error(err);
-          setSyncStatus('sync_error');
-        }
-      }
       return false;
     }
   };
 
-  // Tab E: Bàn giao đồ & Vô hiệu hóa mã nhận - Hỗ trợ RPC giao dịch nguyên tử
+  // Tab E: Bàn giao đồ & Vô hiệu hóa mã nhận - Cloud-First qua RPC nguyên tử
   const completeHandover = async (enteredCode) => {
+    if (currentUser.role !== 'station_staff' && currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
+      return { success: false, message: 'Từ chối quyền: Chỉ Quản sinh Trạm hoặc Giáo viên mới có quyền bàn giao đồ!' };
+    }
+
     const trimmedCode = enteredCode.trim().toUpperCase();
     const apt = appointments.find(a => a.pickupCode.toUpperCase() === trimmedCode);
 
@@ -1058,6 +1258,24 @@ export const AppProvider = ({ children }) => {
 
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc('rpc_complete_handover', {
+          p_pickup_code: trimmedCode
+        });
+
+        if (rpcErr) {
+          setSyncStatus('sync_error');
+          return { success: false, message: `Lỗi bàn giao Cloud (RPC): ${rpcErr.message}` };
+        }
+      } catch (err) {
+        console.error('Supabase completeHandover error:', err);
+        setSyncStatus('sync_error');
+        return { success: false, message: `Lỗi kết nối RPC bàn giao: ${err.message}` };
+      }
+    }
+
+    // Chỉ cập nhật state khi DB/RPC xác nhận thành công
     setAppointments(prev => prev.map(a => {
       if (a.id === apt.id) {
         return {
@@ -1084,32 +1302,6 @@ export const AppProvider = ({ children }) => {
     addLog('BÀN GIAO THÀNH CÔNG', `Đã bàn giao món ${apt.itemId} (${item.title}) cho ${apt.requesterId}. Mã ${apt.pickupCode} đã vô hiệu hóa. Giải phóng kệ trạm.`);
     showNotification(`Bàn giao thành công món ${item.title}! Mã nhận đã được vô hiệu hóa an toàn.`, 'success');
 
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { error: rpcErr } = await supabase.rpc('rpc_complete_handover', {
-          p_pickup_code: trimmedCode,
-          p_operator_id: currentUser.id
-        });
-
-        if (rpcErr) {
-          await Promise.all([
-            supabase.from('appointments').update({
-              status: 'completed',
-              picked_up_at: now,
-              storage_slot: null
-            }).eq('id', apt.id),
-            supabase.from('items').update({
-              status: 'completed',
-              storage_slot: null
-            }).eq('id', apt.itemId)
-          ]);
-        }
-      } catch (err) {
-        console.error(err);
-        setSyncStatus('sync_error');
-      }
-    }
-
     return {
       success: true,
       appointment: apt,
@@ -1129,6 +1321,11 @@ export const AppProvider = ({ children }) => {
       value={{
         currentUser,
         setCurrentUser,
+        authUser,
+        isAuthModalOpen,
+        openAuthModal,
+        closeAuthModal,
+        signOut,
         switchRole,
         resetToSeedData,
         uploadSeedToSupabase,

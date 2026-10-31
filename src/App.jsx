@@ -12,10 +12,11 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import LoopMatchPage from './pages/LoopMatchPage';
 import LabPage from './pages/LabPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import AuthModal from './components/AuthModal';
 import { CheckCircle2, AlertCircle, Info, XCircle } from 'lucide-react';
 
 function MainContent() {
-  const { notification, syncStatus, syncError } = useApp();
+  const { notification, syncStatus, syncError, isAuthModalOpen, closeAuthModal } = useApp();
   const [activePage, setActivePage] = useState('home');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -35,6 +36,9 @@ function MainContent() {
 
       {/* 2. MAIN HEADER & NAVBAR */}
       <Navbar activePage={activePage} setActivePage={setActivePage} />
+
+      {/* AUTH MODAL CHO THỬ NGHIỆM ĐA THIẾT BỊ */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={closeAuthModal} />
 
       {/* 3. TOAST NOTIFICATION */}
       {notification && (
@@ -141,7 +145,7 @@ function MainContent() {
             </p>
           </div>
           <div className="text-gray-400">
-            Ứng dụng Client-Side SPA • Toàn bộ dữ liệu mô phỏng lưu trữ trong localStorage
+            Ứng dụng KHKT • Đồng bộ thời gian thực Supabase Cloud • Phục vụ thử nghiệm 3–5 thiết bị
           </div>
         </div>
       </footer>

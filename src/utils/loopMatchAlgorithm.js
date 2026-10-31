@@ -1,7 +1,7 @@
 // THUẬT TOÁN ĐIỀU PHỐI GHÉP NỐI "LOOPMATCH"
 // Đề tài KHKT: LÊ LỢI LOOP - THCS LÊ LỢI ĐÀ NẴNG
 
-import { STATION_SLOTS } from '../data/seedData';
+import { STATION_SLOTS } from '../data/seedData.js';
 
 // Chuyển slot ID sang chỉ số tuần tự tuyến tính trong tuần học
 // T2_AM -> 0, T2_PM -> 1, T3_AM -> 2, T3_PM -> 3, ..., T6_PM -> 9

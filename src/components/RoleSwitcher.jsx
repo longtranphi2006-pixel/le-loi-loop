@@ -1,10 +1,12 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { RefreshCw, ShieldAlert, Database, CloudCheck, CloudOff, ArrowUpCircle } from 'lucide-react';
+import { RefreshCw, ShieldAlert, Database, CloudCheck, CloudOff, ArrowUpCircle, Lock, KeyRound, UserCheck } from 'lucide-react';
 
 export default function RoleSwitcher() {
   const {
     currentUser,
+    authUser,
+    openAuthModal,
     switchRole,
     resetToSeedData,
     uploadSeedToSupabase,
@@ -51,7 +53,12 @@ export default function RoleSwitcher() {
               </span>
             )}
 
-            {isSupabaseConfigured && (
+            {isSupabaseConfigured ? (
+              <span className="text-[10px] text-emerald-200/80 flex items-center gap-1 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                <Lock className="w-3 h-3 text-emerald-300" />
+                <span>Pilot DB: Đã khóa nút ghi đè</span>
+              </span>
+            ) : (
               <button
                 onClick={uploadSeedToSupabase}
                 disabled={isSyncing}
@@ -78,6 +85,11 @@ export default function RoleSwitcher() {
               <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-semibold">
                 {currentUser.id}
               </span>
+              {authUser && (
+                <span className="text-[9px] bg-emerald-700 text-white px-1.5 py-0.2 rounded-full font-bold">
+                  Auth ✓
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-gray-500 leading-none">
               {currentUser.role === 'teacher' ? 'Giáo viên phụ trách KHKT' : currentUser.role === 'station_staff' ? 'Đội trực trạm CLB' : `Học sinh lớp ${currentUser.class} (${currentUser.shift})`}
@@ -85,42 +97,73 @@ export default function RoleSwitcher() {
           </div>
         </div>
 
-        {/* Danh sách 4 vai trò nhanh */}
-        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5">
-          {users.map(u => {
-            const isActive = currentUser.id === u.id;
-            return (
-              <button
-                key={u.id}
-                onClick={() => switchRole(u.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-                  isActive
-                    ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400'
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                }`}
-                title={`${u.name} (${u.role})`}
-              >
-                <span className="font-bold text-[11px]">{u.id}</span>
-                <span className="hidden sm:inline">{u.id === 'HS001' ? 'Bảo An (Sáng)' : u.id === 'HS002' ? 'Hoàng Nam (Chiều)' : u.id === 'TR01' ? 'Đội trực' : 'Thầy A'}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Danh sách vai trò hoặc Nút mở đăng nhập */}
+        {authUser ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-emerald-800 font-bold hidden sm:inline flex items-center gap-1">
+              <UserCheck className="w-4 h-4 text-emerald-600 inline" />
+              Phiên thí điểm hoạt động
+            </span>
+            <button
+              onClick={openAuthModal}
+              className="flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Đổi tài khoản</span>
+            </button>
+          </div>
+        ) : isSupabaseConfigured ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500 hidden sm:inline">
+              Chế độ Cloud Thí điểm:
+            </span>
+            <button
+              onClick={openAuthModal}
+              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm shadow-emerald-200"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Đăng nhập tài khoản</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5">
+            {users.map(u => {
+              const isActive = currentUser.id === u.id;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => switchRole(u.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                  title={`${u.name} (${u.role})`}
+                >
+                  <span className="font-bold text-[11px]">{u.id}</span>
+                  <span className="hidden sm:inline">{u.id === 'HS001' ? 'Bảo An' : u.id === 'HS002' ? 'Hoàng Nam' : u.id === 'TR01' ? 'Đội trực' : 'Thầy A'}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Nút reset demo data */}
-        <button
-          onClick={() => {
-            if (window.confirm('Khôi phục toàn bộ dữ liệu mẫu (12 món đồ, 10 vị trí kệ, các lịch hẹn và nhật ký KHKT ban đầu)?')) {
-              resetToSeedData();
-            }
-          }}
-          disabled={isSyncing}
-          className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all shadow-sm active:scale-95"
-          title="Khôi phục trạng thái dữ liệu gốc ban đầu"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isSyncing ? 'animate-spin' : ''}`} />
-          <span className="hidden md:inline">Khôi phục demo</span>
-        </button>
+        {/* Nút reset demo data (chỉ cho phép khi offline hoặc xác nhận kỹ) */}
+        {!isSupabaseConfigured && (
+          <button
+            onClick={() => {
+              if (window.confirm('Khôi phục toàn bộ dữ liệu mẫu cục bộ ban đầu?')) {
+                resetToSeedData();
+              }
+            }}
+            disabled={isSyncing}
+            className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all shadow-sm active:scale-95"
+            title="Khôi phục trạng thái dữ liệu gốc ban đầu"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className="hidden md:inline">Khôi phục demo</span>
+          </button>
+        )}
       </div>
     </>
   );

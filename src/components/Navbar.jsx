@@ -18,12 +18,18 @@ import {
   CheckCircle2,
   Heart,
   MessageSquare,
-  ArrowRight
+  ArrowRight,
+  LogIn,
+  LogOut,
+  KeyRound
 } from 'lucide-react';
 
 export default function Navbar({ activePage, setActivePage }) {
   const {
     currentUser,
+    authUser,
+    openAuthModal,
+    signOut,
     items,
     requests,
     appointments,
@@ -228,10 +234,15 @@ export default function Navbar({ activePage, setActivePage }) {
               )}
             </div>
 
-            {/* User profile */}
+            {/* User profile & Auth Controls */}
             <div className="hidden sm:flex items-center gap-3 pl-2 border-l border-gray-200">
               <div className="text-right">
-                <div className="text-xs font-bold text-gray-900">{currentUser.name}</div>
+                <div className="text-xs font-bold text-gray-900 flex items-center justify-end gap-1">
+                  <span>{currentUser.name}</span>
+                  {authUser && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" title="Đã đăng nhập Supabase Auth" />
+                  )}
+                </div>
                 <div className="text-[11px] text-emerald-700 font-medium">
                   {currentUser.role === 'teacher' ? 'GV Phụ trách' : currentUser.role === 'station_staff' ? 'Đội Trực Trạm' : `HS Lớp ${currentUser.class}`}
                 </div>
@@ -239,8 +250,29 @@ export default function Navbar({ activePage, setActivePage }) {
               <img
                 src={currentUser.avatar}
                 alt={currentUser.name}
-                className="w-9 h-9 rounded-full ring-2 ring-emerald-500 object-cover"
+                className="w-9 h-9 rounded-full ring-2 ring-emerald-500 object-cover cursor-pointer hover:opacity-90"
+                onClick={openAuthModal}
+                title="Nhấn để đổi tài khoản hoặc đăng nhập"
               />
+
+              {authUser ? (
+                <button
+                  onClick={signOut}
+                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                  title="Đăng xuất khỏi Supabase Auth"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={openAuthModal}
+                  className="flex items-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200"
+                  title="Đăng nhập tài khoản thí nghiệm"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Đăng nhập</span>
+                </button>
+              )}
             </div>
 
             {/* Mobile hamburger */}

@@ -33,3 +33,4 @@ export default function ProtectedRoute({ allowedRoles, setActivePage, children }
 
   return children;
 }
+
