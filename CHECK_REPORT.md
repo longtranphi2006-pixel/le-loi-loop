@@ -72,3 +72,4 @@ Hệ thống **LÊ LỢI LOOP** đã có logic nghiệp vụ chi tiết (thuật
      - `rpc_accept_request_by_donor`: Chốt người nhận, chuyển các bạn khác thành dự phòng, đổi trạng thái món đồ, gửi thông báo Cloud chỉ trong 1 giao dịch.
      - `rpc_inspect_and_receive_item`: Kiểm tra ô kệ trống trước khi gán (chống race condition 2 người gán 1 ô), đổi trạng thái lịch hẹn và món đồ.
      - `rpc_complete_handover`: Kiểm tra tính hợp lệ của mã nhận, khóa dòng giao dịch, giải phóng kệ và đổi trạng thái completed.
+

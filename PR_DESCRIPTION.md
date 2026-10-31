@@ -75,3 +75,4 @@ Nếu xảy ra sự cố trong quá trình thử nghiệm 48 giờ:
    DROP FUNCTION IF EXISTS public.rpc_inspect_and_receive_item(TEXT, BOOLEAN, TEXT, TEXT, TEXT);
    DROP FUNCTION IF EXISTS public.rpc_complete_handover(TEXT, TEXT);
    ```
+

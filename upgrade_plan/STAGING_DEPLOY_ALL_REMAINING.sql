@@ -455,3 +455,4 @@ FOR UPDATE USING (
     recipient_id = (SELECT legacy_id FROM public.get_current_profile())
     OR auth.role() = 'service_role'
 );
+

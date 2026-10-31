@@ -352,3 +352,4 @@ GRANT EXECUTE ON FUNCTION public.rpc_complete_handover(TEXT, TEXT) TO authentica
 -- 3. Xóa bảng notifications (nếu cần hoàn tác):
 --    ALTER PUBLICATION supabase_realtime DROP TABLE public.notifications;
 --    DROP TABLE IF EXISTS public.notifications;
+
