@@ -1,15 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const getEnvVar = (key) => {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) return import.meta.env[key];
-  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
-  return '';
-};
-
-const rawUrl = getEnvVar('VITE_SUPABASE_URL').trim();
+const rawUrl = (
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && process.env && process.env.VITE_SUPABASE_URL) ||
+  'https://ynkhukeqdqewakrqtvtu.supabase.co'
+).trim();
 // Tự động chuẩn hóa nếu người dùng copy nhầm cả đuôi /rest/v1/
 const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY').trim();
+const supabaseAnonKey = (
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY) ||
+  (typeof process !== 'undefined' && process.env && process.env.VITE_SUPABASE_ANON_KEY) ||
+  'sb_publishable_Uq2GNNl4Oj3PcWWRJpIUiQ_ew0XiUoX'
+).trim();
 
 // =========================================================================
 // CƠ CHẾ KIỂM SOÁT AN TOÀN RANH GIỚI MÔI TRƯỜNG (ENVIRONMENT SAFETY GUARD)

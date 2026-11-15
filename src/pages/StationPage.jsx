@@ -284,9 +284,25 @@ export default function StationPage({ setActivePage, setSelectedItem }) {
                 </button>
               </div>
             ) : (
-              <p className="text-xs text-gray-600">
-                Vị trí ô kệ này hiện đang sạch sẽ, sẵn sàng để tiếp nhận món đồ lưu giữ tiếp theo khi giáo viên hoặc đội trực trạm hoàn tất khâu kiểm tra thực tế.
-              </p>
+              <div className="space-y-3 pt-1">
+                <p className="text-xs text-gray-600">
+                  Vị trí ô kệ này hiện đang sạch sẽ, sẵn sàng để tiếp nhận món đồ lưu giữ tiếp theo khi giáo viên hoặc đội trực trạm hoàn tất khâu kiểm tra thực tế.
+                </p>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="font-bold">💡 Cách thêm đồ vào ô này:</span>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      Học sinh mang đồ đến Trạm theo lịch hẹn ➔ Quản sinh hoặc Thầy phụ trách vào mục <strong>Quản lý</strong> ➔ <strong>Tab D. Tiếp nhận & Kiểm tra</strong> ➔ Chọn Đạt kiểm tra và gán vào ô <strong>{selectedSlotDetails.slotId}</strong>.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActivePage('admin')}
+                    className="shrink-0 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs transition-colors self-start sm:self-auto shadow-sm"
+                  >
+                    Đến Bảng Quản lý
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}

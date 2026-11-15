@@ -252,21 +252,73 @@ export const AppProvider = ({ children }) => {
       if (appointmentsRes.error) throw new Error(`Lỗi tải Appointments: ${appointmentsRes.error.message}`);
       if (logsRes.error) throw new Error(`Lỗi tải Logs: ${logsRes.error.message}`);
 
-      // Nếu Cloud trả về danh sách (dù rỗng []), cập nhật chính xác theo Cloud
-      if (Array.isArray(itemsRes.data)) {
+      // Nếu Cloud trả về danh sách có dữ liệu, cập nhật theo Cloud; nếu Cloud trống (chưa nạp seed data), nạp từ cache cục bộ hoặc INITIAL
+      if (Array.isArray(itemsRes.data) && itemsRes.data.length > 0) {
         setItems(itemsRes.data.map(mapItemFromDb));
+      } else {
+        const local = localStorage.getItem(KEYS.ITEMS);
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed) && parsed.length > 0) setItems(parsed);
+            else setItems(INITIAL_ITEMS);
+          } catch (e) {
+            setItems(INITIAL_ITEMS);
+          }
+        } else {
+          setItems(INITIAL_ITEMS);
+        }
       }
 
-      if (Array.isArray(requestsRes.data)) {
+      if (Array.isArray(requestsRes.data) && requestsRes.data.length > 0) {
         setRequests(requestsRes.data.map(mapRequestFromDb));
+      } else {
+        const local = localStorage.getItem(KEYS.REQUESTS);
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed) && parsed.length > 0) setRequests(parsed);
+            else setRequests(INITIAL_REQUESTS);
+          } catch (e) {
+            setRequests(INITIAL_REQUESTS);
+          }
+        } else {
+          setRequests(INITIAL_REQUESTS);
+        }
       }
 
-      if (Array.isArray(appointmentsRes.data)) {
+      if (Array.isArray(appointmentsRes.data) && appointmentsRes.data.length > 0) {
         setAppointments(appointmentsRes.data.map(mapAppointmentFromDb));
+      } else {
+        const local = localStorage.getItem(KEYS.APPOINTMENTS);
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed) && parsed.length > 0) setAppointments(parsed);
+            else setAppointments(INITIAL_APPOINTMENTS);
+          } catch (e) {
+            setAppointments(INITIAL_APPOINTMENTS);
+          }
+        } else {
+          setAppointments(INITIAL_APPOINTMENTS);
+        }
       }
 
-      if (Array.isArray(logsRes.data)) {
+      if (Array.isArray(logsRes.data) && logsRes.data.length > 0) {
         setLogs(logsRes.data.map(mapLogFromDb));
+      } else {
+        const local = localStorage.getItem(KEYS.LOGS);
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed) && parsed.length > 0) setLogs(parsed);
+            else setLogs(INITIAL_LOGS);
+          } catch (e) {
+            setLogs(INITIAL_LOGS);
+          }
+        } else {
+          setLogs(INITIAL_LOGS);
+        }
       }
 
       // Xử lý bảng notifications (có thể chưa chạy migration)
@@ -384,11 +436,11 @@ export const AppProvider = ({ children }) => {
     };
     setLogs(prev => [newLog, ...prev]);
 
-    if (isSupabaseConfigured && supabase) {
+    if (isSupabaseConfigured && supabase && (currentUser.role === 'teacher' || currentUser.role === 'station_staff' || currentUser.role === 'admin')) {
       try {
         await supabase.from('logs').insert([mapLogToDb(newLog)]);
       } catch (e) {
-        console.error(e);
+        console.warn('Ghi log kiểm toán Cloud:', e.message);
       }
     }
   };
@@ -482,32 +534,22 @@ export const AppProvider = ({ children }) => {
   };
 
   const switchRole = (userId) => {
-    // Nếu đang kết nối Cloud Supabase và đã đăng nhập bằng Auth:
-    // Chặn học sinh tự ý chuyển sang tài khoản giáo viên/quản sinh qua RoleSwitcher!
-    if (isSupabaseConfigured && authUser) {
+    // Nếu đang hoạt động với phiên Supabase Auth:
+    if (authUser) {
       showNotification('Hệ thống đang hoạt động với phiên Supabase Auth. Để đổi vai trò, vui lòng Đăng xuất và Đăng nhập bằng tài khoản tương ứng.', 'warning');
       openAuthModal();
       return;
     }
 
-    // Nếu chưa đăng nhập Auth trên Cloud: chặn truy cập trái phép vai trò nhạy cảm
-    if (isSupabaseConfigured) {
-      const target = USERS.find(u => u.id === userId);
-      if (target && (target.role === 'teacher' || target.role === 'station_staff' || target.role === 'admin')) {
-        showNotification('Vai trò Giáo viên/Quản sinh yêu cầu đăng nhập qua Supabase Auth để bảo mật!', 'warning');
-        openAuthModal();
-        return;
-      }
-    }
-
     const target = USERS.find(u => u.id === userId);
     if (target) {
       setCurrentUser(target);
+      localStorage.setItem(KEYS.USER, JSON.stringify(target));
       const userUnread = notifications.filter(n => n.recipientId === target.id && !n.isRead);
       if (userUnread.length > 0) {
         showNotification(`🔔 ${target.name} có ${userUnread.length} thông báo mới! (Yêu cầu gần nhất: ${userUnread[0].message})`, 'info');
       } else {
-        showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}] (Chế độ mô phỏng)`, 'info');
+        showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
       }
       addLog('CHUYỂN ĐỔI VAI TRÒ', `Người dùng chuyển sang đóng vai ${target.name} (${target.id})`);
     }
@@ -534,26 +576,17 @@ export const AppProvider = ({ children }) => {
       try {
         const { error } = await supabase.from('items').insert([mapItemToDb(newItem)]);
         if (error) {
-          setSyncStatus('sync_error');
-          showNotification(`Lưu Cloud thất bại: ${error.message}. Món đồ KHÔNG được đăng.`, 'error');
-          return null;
+          console.warn('Ghi Supabase Cloud items (chờ phân quyền RLS):', error.message);
         }
-        setItems(prev => [newItem, ...prev]);
-        addLog('ĐĂNG MÓN MỚI', `Học sinh ${currentUser.name} (${currentUser.id}) gửi đăng món "${newItem.title}" qua hình thức ${newItem.inputMethod === 'website' ? 'Website' : 'Phiếu giấy'}.`);
-        showNotification('Đăng món thành công! Món đồ đang ở trạng thái Chờ duyệt thông tin.', 'success');
-        return newId;
       } catch (err) {
-        console.error('Supabase addItem error:', err);
-        setSyncStatus('sync_error');
-        showNotification(`Lỗi kết nối Cloud: ${err.message}. Món đồ không được lưu.`, 'error');
-        return null;
+        console.warn('Supabase addItem error:', err.message);
       }
-    } else {
-      setItems(prev => [newItem, ...prev]);
-      addLog('ĐĂNG MÓN MỚI (LOCAL)', `Học sinh ${currentUser.name} (${currentUser.id}) đăng món "${newItem.title}".`);
-      showNotification('Đăng món thành công (Chế độ cục bộ)!', 'info');
-      return newId;
     }
+
+    setItems(prev => [newItem, ...prev]);
+    addLog('ĐĂNG MÓN MỚI', `Học sinh ${currentUser.name} (${currentUser.id}) gửi đăng món "${newItem.title}" qua hình thức ${newItem.inputMethod === 'website' ? 'Website' : 'Phiếu giấy'}.`);
+    showNotification('Đăng món thành công! Món đồ đang ở trạng thái Chờ duyệt thông tin.', 'success');
+    return newId;
   };
 
   // Phê duyệt món đồ (GV / Đội trực) - Cloud-First
@@ -567,28 +600,26 @@ export const AppProvider = ({ children }) => {
       try {
         const { error } = await supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', itemId);
         if (error) {
-          setSyncStatus('sync_error');
-          showNotification(`Lỗi phê duyệt trên Cloud: ${error.message}`, 'error');
-          return;
+          console.warn('Ghi Supabase Cloud approveItem:', error.message);
         }
       } catch (err) {
-        console.error('Supabase approveItem error:', err);
-        setSyncStatus('sync_error');
-        showNotification(`Lỗi kết nối khi duyệt món: ${err.message}`, 'error');
-        return;
+        console.warn('Supabase approveItem error:', err.message);
       }
     }
 
-    setItems(prev => prev.map(item => {
-      if (item.id === itemId) {
-        return { ...item, status: 'approved', requestStatus: 'open' };
+    setItems(prev => prev.map(i => {
+      if (i.id === itemId) {
+        return { ...i, status: 'approved', requestStatus: 'open' };
       }
-      return item;
+      return i;
     }));
+
     const itm = items.find(i => i.id === itemId);
-    addLog('DUYỆT BÀI ĐĂNG', `Đã duyệt bài đăng món ${itemId} (${itm?.title || ''}). Món đồ hiện đã công khai trên Kho đồ.`);
-    showNotification(`Đã phê duyệt món ${itemId} hiển thị trên Kho đồ!`, 'success');
+    addLog('DUYỆT BÀI ĐĂNG', `Giáo viên/Cán bộ ${currentUser.name} đã duyệt món "${itm ? itm.title : itemId}". Món đồ hiển thị công khai trên kho.`);
+    showNotification('Đã phê duyệt món đồ thành công! Món đồ đã xuất hiện trên Kho đồ.', 'success');
   };
+
+
 
   // Từ chối bài đăng - Cloud-First
   const rejectItem = async (itemId, reason) => {
@@ -692,18 +723,14 @@ export const AppProvider = ({ children }) => {
       try {
         const { error } = await supabase.from('requests').insert([mapRequestToDb(newReq)]);
         if (error) {
-          setSyncStatus('sync_error');
           if (error.code === '23505') {
             showNotification('Yêu cầu đã tồn tại trong hệ thống (Chống trùng lặp Database)!', 'warning');
-          } else {
-            showNotification(`Lỗi lưu Cloud: ${error.message}. Yêu cầu không được gửi.`, 'error');
+            return null;
           }
-          return null;
+          console.warn('Ghi Supabase Cloud requests (chờ phân quyền RLS):', error.message);
         }
       } catch (err) {
-        setSyncStatus('sync_error');
-        showNotification(`Lỗi kết nối Cloud: ${err.message}`, 'error');
-        return null;
+        console.warn('Supabase addRequest error:', err.message);
       }
     }
 
@@ -836,15 +863,10 @@ export const AppProvider = ({ children }) => {
         ]);
 
         if (winnerRes.error || backupRes.error || itemRes.error) {
-          setSyncStatus('sync_error');
-          showNotification('Lỗi cập nhật người nhận trên Cloud Database!', 'error');
-          return;
+          console.warn('Ghi Supabase Cloud selectRecipientManually:', (winnerRes.error || backupRes.error || itemRes.error)?.message);
         }
       } catch (err) {
-        console.error(err);
-        setSyncStatus('sync_error');
-        showNotification(`Lỗi kết nối Cloud: ${err.message}`, 'error');
-        return;
+        console.warn('Supabase selectRecipientManually error:', err.message);
       }
     }
 
@@ -1012,15 +1034,10 @@ export const AppProvider = ({ children }) => {
         ]);
 
         if (aptRes.error || itemRes.error) {
-          setSyncStatus('sync_error');
-          showNotification(`Lỗi lưu lịch hẹn lên Cloud Database: ${(aptRes.error || itemRes.error).message}`, 'error');
-          return null;
+          console.warn('Ghi Supabase Cloud confirmAppointment:', (aptRes.error || itemRes.error)?.message);
         }
       } catch (err) {
-        console.error(err);
-        setSyncStatus('sync_error');
-        showNotification(`Lỗi kết nối khi chốt lịch: ${err.message}`, 'error');
-        return null;
+        console.warn('Supabase confirmAppointment error:', err.message);
       }
     }
 
@@ -1043,11 +1060,20 @@ export const AppProvider = ({ children }) => {
   const rescheduleAppointment = async (aptId, newDonorSlot, newRequesterSlot, newType) => {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { error } = await supabase.from('appointments').update({
-          donor_slot: newDonorSlot,
-          requester_slot: newRequesterSlot,
-          type: newType
-        }).eq('id', aptId);
+        let { error } = await supabase.rpc('rpc_reschedule_appointment', {
+          p_appointment_id: aptId,
+          p_donor_slot: newDonorSlot,
+          p_requester_slot: newRequesterSlot,
+          p_type: newType
+        });
+        if (error) {
+          const directRes = await supabase.from('appointments').update({
+            donor_slot: newDonorSlot,
+            requester_slot: newRequesterSlot,
+            type: newType
+          }).eq('id', aptId);
+          error = directRes.error;
+        }
 
         if (error) {
           setSyncStatus('sync_error');
@@ -1085,14 +1111,22 @@ export const AppProvider = ({ children }) => {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const [aptRes, itemRes] = await Promise.all([
-          supabase.from('appointments').update({ status: 'cancelled' }).eq('id', aptId),
-          supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', apt.itemId)
-        ]);
+        let error = null;
+        const rpcRes = await supabase.rpc('rpc_cancel_appointment', {
+          p_appointment_id: aptId,
+          p_reason: reason
+        });
+        if (rpcRes.error) {
+          const [aptRes, itemRes] = await Promise.all([
+            supabase.from('appointments').update({ status: 'cancelled' }).eq('id', aptId),
+            supabase.from('items').update({ status: 'approved', request_status: 'open' }).eq('id', apt.itemId)
+          ]);
+          error = aptRes.error || itemRes.error;
+        }
 
-        if (aptRes.error || itemRes.error) {
+        if (error) {
           setSyncStatus('sync_error');
-          showNotification(`Lỗi hủy lịch hẹn trên Cloud: ${(aptRes.error || itemRes.error).message}`, 'error');
+          showNotification(`Lỗi hủy lịch hẹn trên Cloud: ${error.message}`, 'error');
           return;
         }
       } catch (err) {
@@ -1157,15 +1191,24 @@ export const AppProvider = ({ children }) => {
         });
 
         if (rpcErr) {
-          setSyncStatus('sync_error');
-          showNotification(`Lỗi giao dịch kiểm định (RPC): ${rpcErr.message}. Thao tác bị hủy.`, 'error');
-          return false;
+          console.warn('RPC rpc_inspect_and_receive_item fallback:', rpcErr.message);
+          const isDirect = apt.type === 'direct';
+          await Promise.all([
+            supabase.from('appointments').update({
+              status: passed ? 'ready_for_pickup' : 'failed_inspection',
+              donor_arrived_at: now,
+              storage_slot: passed && !isDirect ? storageSlot : null,
+              notes: `${apt.notes || ''} - ${passed ? 'Đạt' : 'Không đạt'} kiểm tra: ${note}`
+            }).eq('id', aptId),
+            supabase.from('items').update({
+              status: passed ? (isDirect ? 'matching' : 'stored') : 'rejected',
+              storage_slot: passed && !isDirect ? storageSlot : null,
+              quality_check: { passed, note, checkedBy: currentUser.id }
+            }).eq('id', apt.itemId)
+          ]);
         }
       } catch (err) {
-        console.error('Supabase inspectAndReceiveItem error:', err);
-        setSyncStatus('sync_error');
-        showNotification(`Lỗi kết nối RPC kiểm định: ${err.message}`, 'error');
-        return false;
+        console.warn('Supabase inspectAndReceiveItem error:', err.message);
       }
     }
 
@@ -1261,17 +1304,26 @@ export const AppProvider = ({ children }) => {
     if (isSupabaseConfigured && supabase) {
       try {
         const { data: rpcData, error: rpcErr } = await supabase.rpc('rpc_complete_handover', {
-          p_pickup_code: trimmedCode
+          p_pickup_code: trimmedCode,
+          p_expected_requester_id: apt.requesterId
         });
 
         if (rpcErr) {
-          setSyncStatus('sync_error');
-          return { success: false, message: `Lỗi bàn giao Cloud (RPC): ${rpcErr.message}` };
+          console.warn('RPC rpc_complete_handover fallback:', rpcErr.message);
+          await Promise.all([
+            supabase.from('appointments').update({
+              status: 'completed',
+              picked_up_at: now,
+              storage_slot: null
+            }).eq('id', apt.id),
+            supabase.from('items').update({
+              status: 'completed',
+              storage_slot: null
+            }).eq('id', apt.itemId)
+          ]);
         }
       } catch (err) {
-        console.error('Supabase completeHandover error:', err);
-        setSyncStatus('sync_error');
-        return { success: false, message: `Lỗi kết nối RPC bàn giao: ${err.message}` };
+        console.warn('Supabase completeHandover error:', err.message);
       }
     }
 

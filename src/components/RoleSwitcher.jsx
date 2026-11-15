@@ -112,19 +112,6 @@ export default function RoleSwitcher() {
               <span>Đổi tài khoản</span>
             </button>
           </div>
-        ) : isSupabaseConfigured ? (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-gray-500 hidden sm:inline">
-              Chế độ Cloud Thí điểm:
-            </span>
-            <button
-              onClick={openAuthModal}
-              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm shadow-emerald-200"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Đăng nhập tài khoản</span>
-            </button>
-          </div>
         ) : (
           <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5">
             {users.map(u => {
@@ -145,6 +132,16 @@ export default function RoleSwitcher() {
                 </button>
               );
             })}
+            {isSupabaseConfigured && (
+              <button
+                onClick={openAuthModal}
+                className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shrink-0 ml-1"
+                title="Đăng nhập tài khoản Supabase Auth"
+              >
+                <KeyRound className="w-3 h-3 text-emerald-600" />
+                <span className="hidden sm:inline">Auth</span>
+              </button>
+            )}
           </div>
         )}
 

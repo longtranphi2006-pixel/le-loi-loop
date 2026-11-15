@@ -494,10 +494,21 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
           </div>
 
           {itemsNeedingAppointment.length === 0 ? (
-            <div className="text-center py-10 text-xs text-gray-500 space-y-2">
+            <div className="text-center py-10 text-xs text-gray-500 space-y-3">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
               <div className="font-bold text-gray-700 text-sm">Hiện không có món nào chờ xếp lịch hẹn</div>
               <p>Tất cả các món đã có người nhận chính thức đều đã được chốt lịch.</p>
+              {appointmentsToInspect.length > 0 && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => setAdminTab('tabD')}
+                    className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition-all"
+                  >
+                    <span>Xem {appointmentsToInspect.length} lịch hẹn đang chờ tiếp nhận tại trạm (Tab D)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-6">
@@ -652,9 +663,11 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
             <div className="space-y-6">
               {appointmentsToInspect.map(apt => {
                 const item = items.find(i => i.id === apt.itemId);
+                const occupiedSlotIds = items.filter(i => i.status === 'stored' && i.storageSlot && i.id !== apt.itemId).map(i => i.storageSlot);
+                const firstAvailableSlot = STORAGE_SLOTS.find(sl => !occupiedSlotIds.includes(sl)) || 'K1-A1';
                 const currentIns = inspectionState[apt.id] || {
                   note: 'Sách vở còn nguyên bìa, đầy đủ trang, sạch sẽ',
-                  slot: 'K1-A2',
+                  slot: firstAvailableSlot,
                   passed: true
                 };
 
@@ -706,9 +719,14 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
                             })}
                             className="w-full p-2.5 border border-gray-200 rounded-xl bg-white font-mono font-bold text-emerald-800"
                           >
-                            {STORAGE_SLOTS.map(sl => (
-                              <option key={sl} value={sl}>Ô {sl}</option>
-                            ))}
+                            {STORAGE_SLOTS.map(sl => {
+                              const isSlotBusy = occupiedSlotIds.includes(sl) && sl !== currentIns.slot;
+                              return (
+                                <option key={sl} value={sl} disabled={isSlotBusy}>
+                                  Ô {sl} {isSlotBusy ? '(Đã có đồ lưu)' : '(Trống sẵn sàng)'}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                       )}
@@ -775,9 +793,9 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
                   className="flex-1 p-3 text-base font-mono font-bold tracking-wider uppercase border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
                 />
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!handoverCode.trim()) return alert('Vui lòng nhập mã nhận đồ!');
-                    const res = completeHandover(handoverCode);
+                    const res = await completeHandover(handoverCode);
                     setHandoverResult(res);
                   }}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl shadow-md text-xs"
