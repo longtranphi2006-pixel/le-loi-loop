@@ -1,6 +1,19 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { RefreshCw, ShieldAlert, Database, CloudCheck, CloudOff, ArrowUpCircle, Lock, KeyRound, UserCheck } from 'lucide-react';
+import {
+  RefreshCw,
+  ShieldAlert,
+  Database,
+  CloudCheck,
+  CloudOff,
+  ArrowUpCircle,
+  Lock,
+  KeyRound,
+  UserCheck,
+  Target,
+  RotateCcw,
+  Sparkles
+} from 'lucide-react';
 
 export default function RoleSwitcher() {
   const {
@@ -9,6 +22,8 @@ export default function RoleSwitcher() {
     openAuthModal,
     switchRole,
     resetToSeedData,
+    quickResetDemo,
+    runDemoScenario,
     uploadSeedToSupabase,
     users,
     isSupabaseConfigured,
@@ -145,22 +160,34 @@ export default function RoleSwitcher() {
           </div>
         )}
 
-        {/* Nút reset demo data (chỉ cho phép khi offline hoặc xác nhận kỹ) */}
-        {!isSupabaseConfigured && (
+        {/* CÁC NÚT ĐIỀU KHIỂN TRÌNH DIỄN KHKT */}
+        <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-gray-200">
+          {/* Nút 1: Chạy Kịch bản mẫu KHKT */}
+          <button
+            onClick={runDemoScenario}
+            className="flex items-center gap-1 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-md shadow-emerald-700/20 active:scale-95 shrink-0"
+            title="Tự động tạo tình huống lệch ca kinh điển để thuyết trình trước Hội đồng KHKT"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span className="hidden sm:inline">Kịch bản KHKT</span>
+            <span className="sm:hidden text-[11px]">KHKT</span>
+          </button>
+
+          {/* Nút 2: Reset Demo 3 Giây */}
           <button
             onClick={() => {
-              if (window.confirm('Khôi phục toàn bộ dữ liệu mẫu cục bộ ban đầu?')) {
-                resetToSeedData();
+              if (window.confirm('Khôi phục toàn bộ dữ liệu mẫu chuẩn trong 3 giây?')) {
+                quickResetDemo();
               }
             }}
             disabled={isSyncing}
-            className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all shadow-sm active:scale-95"
-            title="Khôi phục trạng thái dữ liệu gốc ban đầu"
+            className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all shadow-sm active:scale-95"
+            title="Khôi phục trạng thái dữ liệu sạch đẹp ngay lập tức nếu thao tác nhầm"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-600 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span className="hidden md:inline">Khôi phục demo</span>
+            <RotateCcw className={`w-3.5 h-3.5 text-amber-700 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Reset 3s</span>
           </button>
-        )}
+        </div>
       </div>
     </>
   );

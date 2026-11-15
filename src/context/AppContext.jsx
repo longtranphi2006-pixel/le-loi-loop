@@ -340,6 +340,41 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+  // Helper phát tín hiệu đồng bộ Realtime đa Tab / đa Cửa sổ
+  const notifyOtherTabs = useCallback((type = 'STATE_UPDATED', payload = {}) => {
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('le_loi_loop_multi_tab_sync');
+        bc.postMessage({ type, payload, timestamp: Date.now() });
+        setTimeout(() => bc.close(), 100);
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }, []);
+
+  // Kênh truyền tin cục bộ đa Tab / đa Cửa sổ (HTML5 BroadcastChannel)
+  useEffect(() => {
+    let bc = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('le_loi_loop_multi_tab_sync');
+        bc.onmessage = (event) => {
+          console.log('[BROADCAST MULTI-TAB]', event.data);
+          if (event.data?.type === 'STATE_UPDATED' || event.data?.type === 'RESET_DEMO') {
+            loadDataFromSupabase();
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel init:', e);
+    }
+
+    return () => {
+      if (bc) bc.close();
+    };
+  }, [loadDataFromSupabase]);
+
   // Thiết lập Supabase Realtime Listener (Hỗ trợ 5 bảng bao gồm notifications)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -348,20 +383,30 @@ export const AppProvider = ({ children }) => {
 
     const channel = supabase
       .channel('le-loi-loop-realtime-v2')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, (payload) => {
+        console.log('[REALTIME items change]', payload);
         loadDataFromSupabase();
+        notifyOtherTabs('STATE_UPDATED', payload);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
+        console.log('[REALTIME requests change]', payload);
         loadDataFromSupabase();
+        notifyOtherTabs('STATE_UPDATED', payload);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, (payload) => {
+        console.log('[REALTIME appointments change]', payload);
         loadDataFromSupabase();
+        notifyOtherTabs('STATE_UPDATED', payload);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, (payload) => {
+        console.log('[REALTIME logs change]', payload);
         loadDataFromSupabase();
+        notifyOtherTabs('STATE_UPDATED', payload);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (payload) => {
+        console.log('[REALTIME notifications change]', payload);
         loadDataFromSupabase();
+        notifyOtherTabs('STATE_UPDATED', payload);
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -375,7 +420,7 @@ export const AppProvider = ({ children }) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadDataFromSupabase]);
+  }, [loadDataFromSupabase, notifyOtherTabs]);
 
   // Nạp toàn bộ Seed Data lên Supabase Database
   const uploadSeedToSupabase = async () => {
@@ -464,6 +509,105 @@ export const AppProvider = ({ children }) => {
     } else {
       showNotification('Đã khôi phục dữ liệu demo ban đầu thành công!', 'info');
     }
+    notifyOtherTabs('RESET_DEMO');
+  };
+
+  // Reset nhanh dữ liệu Demo trong 3 giây (Dành cho Giám khảo KHKT)
+  const quickResetDemo = async () => {
+    localStorage.removeItem(KEYS.ITEMS);
+    localStorage.removeItem(KEYS.REQUESTS);
+    localStorage.removeItem(KEYS.APPOINTMENTS);
+    localStorage.removeItem(KEYS.LOGS);
+
+    setItems(INITIAL_ITEMS);
+    setRequests(INITIAL_REQUESTS);
+    setAppointments(INITIAL_APPOINTMENTS);
+    setLogs(INITIAL_LOGS);
+
+    if (isSupabaseConfigured && supabase) {
+      uploadSeedToSupabase().catch(() => {});
+    }
+
+    notifyOtherTabs('RESET_DEMO');
+    showNotification('✓ Đã khôi phục dữ liệu ban đầu sạch đẹp trong 3 giây!', 'info');
+  };
+
+  // Chế độ Kịch bản Trình diễn 1 Chạm (One-Click Demo Tour)
+  const runDemoScenario = async () => {
+    const demoItemId = 'M-KHKT-TOAN7';
+    const demoReqId = 'REQ-KHKT-NAM8';
+    const demoAptId = 'APT-KHKT-2026';
+    const pickupCode = 'LOOP-2026';
+
+    const demoItem = {
+      id: demoItemId,
+      title: '[DEMO-KHKT] Sách Toán 7 (Chân Trời Sáng Tạo)',
+      category: 'sgk',
+      condition: 'Tốt',
+      description: 'Sách giáo khoa Toán 7 tập 1 & 2, giữ gìn cẩn thận, bọc bìa bóng kính sạch sẽ.',
+      donorId: 'HS001',
+      donorName: 'Trần Bảo An (7/1)',
+      availableSlots: ['T2_PM', 'T4_PM'],
+      inputMethod: 'website',
+      status: 'approved',
+      requestStatus: 'closed',
+      image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80',
+      qualityCheck: 'Đạt kiểm định Phòng Đội THCS Lê Lợi',
+      storageSlot: 'K1-A1',
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+    };
+
+    const demoRequest = {
+      id: demoReqId,
+      itemId: demoItemId,
+      requesterId: 'HS002',
+      requesterName: 'Lê Hoàng Nam',
+      requesterClass: '8/2',
+      reason: 'Em học buổi Chiều, rất cần sách Toán 7 để ôn thi học kỳ 2.',
+      availableSlots: ['T4_AM', 'T5_AM'],
+      inputMethod: 'website',
+      status: 'selected',
+      lotteryRank: 1,
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+    };
+
+    const demoAppointment = {
+      id: demoAptId,
+      itemId: demoItemId,
+      requestId: demoReqId,
+      donorId: 'HS001',
+      requesterId: 'HS002',
+      type: 'temporary_storage',
+      donorSlot: 'T2_PM',
+      requesterSlot: 'T4_AM',
+      storageSlot: 'K1-A1',
+      pickupCode: pickupCode,
+      status: 'donor_arrived',
+      donorArrivedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      pickedUpAt: null,
+      notes: 'Kịch bản KHKT: An (Sáng) gửi Chiều T2 -> Nam (Chiều) lấy Sáng T4. Lưu tạm 2 ngày tại kệ K1-A1.',
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+    };
+
+    // Cập nhật state
+    setItems(prev => [demoItem, ...prev.filter(i => i.id !== demoItemId)]);
+    setRequests(prev => [demoRequest, ...prev.filter(r => r.id !== demoReqId)]);
+    setAppointments(prev => [demoAppointment, ...prev.filter(a => a.id !== demoAptId)]);
+
+    // Thử đồng bộ Cloud
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('items').upsert([mapItemToDb(demoItem)]);
+        await supabase.from('requests').upsert([mapRequestToDb(demoRequest)]);
+        await supabase.from('appointments').upsert([mapAppointmentToDb(demoAppointment)]);
+      } catch (e) {
+        console.warn('Sync demo scenario to cloud:', e);
+      }
+    }
+
+    notifyOtherTabs('STATE_UPDATED');
+    addLog('KỊCH BẢN KHKT', 'Khởi tạo kịch bản trình diễn KHKT: Sách Toán 7 lệch ca 2 ngày (K1-A1, Mã LOOP-2026)');
+    showNotification('🎯 Đã khởi tạo kịch bản KHKT: Lệch ca 2 ngày được xếp vào kệ K1-A1! Mã nhận: LOOP-2026. Hãy chuyển vai TR01 để bàn giao 1 chạm.', 'success');
   };
 
   // Tạo thông báo mới (Đồng bộ Cloud và Local)
@@ -584,6 +728,7 @@ export const AppProvider = ({ children }) => {
     }
 
     setItems(prev => [newItem, ...prev]);
+    notifyOtherTabs('STATE_UPDATED', { type: 'item_added', item: newItem });
     addLog('ĐĂNG MÓN MỚI', `Học sinh ${currentUser.name} (${currentUser.id}) gửi đăng món "${newItem.title}" qua hình thức ${newItem.inputMethod === 'website' ? 'Website' : 'Phiếu giấy'}.`);
     showNotification('Đăng món thành công! Món đồ đang ở trạng thái Chờ duyệt thông tin.', 'success');
     return newId;
@@ -613,6 +758,7 @@ export const AppProvider = ({ children }) => {
       }
       return i;
     }));
+    notifyOtherTabs('STATE_UPDATED', { type: 'item_approved', itemId });
 
     const itm = items.find(i => i.id === itemId);
     addLog('DUYỆT BÀI ĐĂNG', `Giáo viên/Cán bộ ${currentUser.name} đã duyệt món "${itm ? itm.title : itemId}". Món đồ hiển thị công khai trên kho.`);
@@ -735,6 +881,7 @@ export const AppProvider = ({ children }) => {
     }
 
     setRequests(prev => [newReq, ...prev]);
+    notifyOtherTabs('STATE_UPDATED', { type: 'request_added', request: newReq });
     addLog('GỬI YÊU CẦU NHẬN', `Học sinh ${currentUser.name} (${currentUser.id}) gửi yêu cầu nhận món ${itemId} (${itm?.title || ''}).`);
     showNotification('Đã gửi yêu cầu nhận đồ thành công lên Cloud. Vui lòng theo dõi kết quả!', 'success');
 
@@ -1049,6 +1196,7 @@ export const AppProvider = ({ children }) => {
       }
       return item;
     }));
+    notifyOtherTabs('STATE_UPDATED', { type: 'appointment_confirmed', appointment: newAppointment });
 
     addLog('CHỐT LỊCH HẸN', `Chốt lịch hẹn ${aptId} cho món ${itemId}. Mã nhận đồ phát hành: ${pickupCode}. Hình thức: ${type === 'direct' ? 'Trực tiếp' : 'Lưu tạm'}.`);
     showNotification(`Đã chốt lịch hẹn thành công! Mã nhận: ${pickupCode}`, 'success');
@@ -1352,6 +1500,7 @@ export const AppProvider = ({ children }) => {
     }));
 
     addLog('BÀN GIAO THÀNH CÔNG', `Đã bàn giao món ${apt.itemId} (${item.title}) cho ${apt.requesterId}. Mã ${apt.pickupCode} đã vô hiệu hóa. Giải phóng kệ trạm.`);
+    notifyOtherTabs('STATE_UPDATED', { type: 'handover_completed', code: trimmedCode });
     showNotification(`Bàn giao thành công món ${item.title}! Mã nhận đã được vô hiệu hóa an toàn.`, 'success');
 
     return {
@@ -1414,6 +1563,8 @@ export const AppProvider = ({ children }) => {
         cancelAppointment,
         inspectAndReceiveItem,
         completeHandover,
+        runDemoScenario,
+        quickResetDemo,
         addLog,
         notification,
         showNotification

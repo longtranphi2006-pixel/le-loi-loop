@@ -1,7 +1,21 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES, STATION_SLOTS } from '../data/seedData';
-import { PlusCircle, Clock, Upload, CheckCircle2, AlertCircle, FileText, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import PrintableTicketModal from '../components/PrintableTicketModal';
+import {
+  PlusCircle,
+  Clock,
+  Upload,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Sparkles,
+  Camera,
+  Check,
+  RefreshCw,
+  Image as ImageIcon
+} from 'lucide-react';
 
 const SAMPLE_IMAGES = [
   { label: 'Sách giáo khoa Toán', url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80' },
@@ -25,6 +39,14 @@ export default function DonatePage({ setActivePage }) {
   const [inputMethod, setInputMethod] = useState('website');
   const [customImageUrl, setCustomImageUrl] = useState('');
 
+  // Trạng thái upload ảnh
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState('');
+  const [uploadedPreview, setUploadedPreview] = useState(null);
+
+  // Trạng thái Phiếu hẹn in ấn
+  const [generatedTicket, setGeneratedTicket] = useState(null);
+
   const handleToggleSlot = (slotId) => {
     if (availableSlots.includes(slotId)) {
       setAvailableSlots(availableSlots.filter(s => s !== slotId));
@@ -41,7 +63,88 @@ export default function DonatePage({ setActivePage }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  // Nén ảnh tự động qua HTML5 Canvas (< 500KB)
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1200;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              resolve({ blob, dataUrl: canvas.toDataURL('image/jpeg', 0.82) });
+            },
+            'image/jpeg',
+            0.82
+          );
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Xử lý upload ảnh từ máy hoặc chụp từ camera điện thoại
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      setUploadMsg('Đang nén ảnh nhẹ (< 500KB)...');
+      const { blob, dataUrl } = await compressImage(file);
+      setUploadedPreview(dataUrl);
+
+      // Thử upload lên Supabase Storage bucket 'item-images'
+      if (isSupabaseConfigured && supabase?.storage) {
+        setUploadMsg('Đang tải lên Supabase Storage...');
+        const cleanName = `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+        const { data, error } = await supabase.storage.from('item-images').upload(cleanName, blob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+        if (!error && data) {
+          const { data: pubData } = supabase.storage.from('item-images').getPublicUrl(cleanName);
+          if (pubData?.publicUrl) {
+            setImage(pubData.publicUrl);
+            setCustomImageUrl('');
+            setUploadMsg(`✓ Đã tải lên Supabase Storage (${(blob.size / 1024).toFixed(0)} KB)!`);
+            return;
+          }
+        }
+      }
+
+      // Fallback Base64 an toàn nếu chưa tạo bucket Storage
+      setImage(dataUrl);
+      setCustomImageUrl('');
+      setUploadMsg(`✓ Đã tối ưu ảnh sẵn sàng (${(blob.size / 1024).toFixed(0)} KB)!`);
+    } catch (err) {
+      console.warn('Lỗi xử lý ảnh:', err);
+      setUploadMsg('Không thể xử lý ảnh, hãy thử ảnh khác hoặc chọn ảnh mẫu.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!title.trim()) {
@@ -56,7 +159,7 @@ export default function DonatePage({ setActivePage }) {
 
     const finalImage = customImageUrl.trim() || image;
 
-    addItem({
+    const newId = await addItem({
       title,
       category,
       condition,
@@ -65,6 +168,23 @@ export default function DonatePage({ setActivePage }) {
       availableSlots,
       inputMethod
     });
+
+    // Nếu chọn hình thức phiếu giấy tại trạm -> Hiển thị Mẫu Phiếu Hẹn In Ấn
+    if (inputMethod === 'paper') {
+      const slotLabels = availableSlots.map(s => STATION_SLOTS.find(sl => sl.id === s)?.label || s);
+      const catObj = CATEGORIES.find(c => c.id === category);
+      setGeneratedTicket({
+        ticketCode: `LL-2026-${(newId || 'ITEM').slice(-4)}`,
+        studentName: currentUser.name,
+        studentId: currentUser.id,
+        studentClass: currentUser.class,
+        studentShift: currentUser.shift,
+        itemTitle: title,
+        categoryName: catObj?.name,
+        slots: slotLabels
+      });
+      return;
+    }
 
     setActivePage('my-activity');
   };
@@ -85,8 +205,8 @@ export default function DonatePage({ setActivePage }) {
 
       <div className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-8 shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Thông tin người gửi (Role hiện tại) */}
-          <div className="bg-emerald-50/70 border border-emerald-100 p-4 rounded-2xl flex items-center justify-between">
+          {/* Thông tin người gửi */}
+          <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img
                 src={currentUser.avatar}
@@ -156,39 +276,86 @@ export default function DonatePage({ setActivePage }) {
             </div>
           </div>
 
-          {/* Ảnh minh họa */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-gray-800">
-              Chọn ảnh minh họa hoặc nhập đường dẫn ảnh:
-            </label>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {SAMPLE_IMAGES.map((img, idx) => (
-                <button
-                  type="button"
-                  key={idx}
-                  onClick={() => {
-                    setImage(img.url);
-                    setCustomImageUrl('');
-                  }}
-                  className={`relative rounded-xl overflow-hidden h-20 border-2 transition-all ${
-                    image === img.url && !customImageUrl
-                      ? 'border-emerald-600 ring-2 ring-emerald-300'
-                      : 'border-gray-200 hover:border-gray-300 opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] py-0.5 px-1 truncate text-center">
-                    {img.label}
-                  </span>
-                </button>
-              ))}
+          {/* Upload ảnh thật từ máy / Camera điện thoại */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-gray-800">
+                Hình ảnh hiện vật (Tải ảnh thật hoặc chọn ảnh mẫu):
+              </label>
+              <span className="text-[11px] text-gray-500">Tự động nén &lt; 500KB</span>
             </div>
 
-            <div className="pt-2">
+            {/* Khung nút upload ảnh */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+              <label className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold cursor-pointer shadow-sm transition-all active:scale-95 shrink-0">
+                <Camera className="w-4 h-4" />
+                <span>{isUploading ? 'Đang nén & Tải...' : 'Tải ảnh từ máy / Chụp camera'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                  className="hidden"
+                />
+              </label>
+
+              {uploadMsg && (
+                <div className="text-xs text-emerald-800 font-semibold flex items-center gap-1.5 truncate">
+                  {isUploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" /> : <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                  <span>{uploadMsg}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Preview ảnh vừa upload */}
+            {uploadedPreview && (
+              <div className="flex items-center gap-3 p-2 bg-emerald-50/50 rounded-xl border border-emerald-200">
+                <img src={uploadedPreview} alt="Ảnh tải lên" className="w-14 h-14 rounded-lg object-cover ring-1 ring-emerald-400" />
+                <div className="text-xs">
+                  <span className="font-bold text-emerald-900">Ảnh tải lên đã sẵn sàng!</span>
+                  <div className="text-[11px] text-gray-500">Ảnh này sẽ đại diện cho hiện vật khi đăng lên Kho đồ.</div>
+                </div>
+              </div>
+            )}
+
+            {/* Danh sách ảnh mẫu minh họa */}
+            <div className="pt-1">
+              <div className="text-[11px] font-semibold text-gray-500 mb-1.5">Hoặc chọn nhanh từ thư viện mẫu:</div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {SAMPLE_IMAGES.map((img, idx) => (
+                  <button
+                    type="button"
+                    key={idx}
+                    onClick={() => {
+                      setImage(img.url);
+                      setCustomImageUrl('');
+                      setUploadedPreview(null);
+                      setUploadMsg('');
+                    }}
+                    className={`relative rounded-xl overflow-hidden h-20 border-2 transition-all ${
+                      image === img.url && !customImageUrl && !uploadedPreview
+                        ? 'border-emerald-600 ring-2 ring-emerald-300'
+                        : 'border-gray-200 hover:border-gray-300 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] py-0.5 px-1 truncate text-center">
+                      {img.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <input
                 type="url"
                 value={customImageUrl}
-                onChange={(e) => setCustomImageUrl(e.target.value)}
+                onChange={(e) => {
+                  setCustomImageUrl(e.target.value);
+                  setUploadedPreview(null);
+                }}
                 placeholder="Hoặc dán URL ảnh ngoài: https://..."
                 className="w-full text-xs p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
@@ -276,7 +443,7 @@ export default function DonatePage({ setActivePage }) {
                   checked={inputMethod === 'paper'}
                   onChange={() => setInputMethod('paper')}
                 />
-                <span>Số hóa từ Phiếu giấy tại trạm</span>
+                <span className="font-bold text-emerald-800">Số hóa từ Phiếu giấy tại trạm (Xuất phiếu in)</span>
               </label>
             </div>
           </div>
@@ -308,7 +475,17 @@ export default function DonatePage({ setActivePage }) {
           </div>
         </form>
       </div>
+
+      {/* MODAL PHIẾU HẸN IN ẤN (PRINTABLE TICKET MODAL) */}
+      {generatedTicket && (
+        <PrintableTicketModal
+          ticket={generatedTicket}
+          onClose={() => {
+            setGeneratedTicket(null);
+            setActivePage('my-activity');
+          }}
+        />
+      )}
     </div>
   );
 }
-

@@ -614,3 +614,62 @@ Do Staging là database mới tinh, các migration mở rộng (002-005) không 
 ### 22.2. Tiến trình Database Supabase Staging (`ynkhukeqdqewakrqtvtu`)
 - **Đã hoàn thành:** Migration 000 (`000_base_schema.sql`) đã được thực thi và xác minh trực tiếp: 5 bảng `users`, `items`, `requests`, `appointments`, `logs` đã tồn tại, RLS bật mặc định.
 - **Tập lệnh hoàn tất toàn bộ schema còn lại:** Đã tạo file gộp duy nhất [`upgrade_plan/STAGING_DEPLOY_ALL_REMAINING.sql`](file:///d:/Lê%20Lợi%20Loop/upgrade_plan/STAGING_DEPLOY_ALL_REMAINING.sql) bao gồm toàn bộ migration 002 (notifications), 003 (10 ô kệ trạm), 004 (partial unique index chống race condition) và 005 (profiles, 3 hàm RPC nguyên tử, RLS policies).
+
+
+---
+
+## CHƯƠNG 23: TRIỂN KHAI CHÍNH THỨC LÊN NHÁNH MAIN VÀ KÍCH HOẠT VERCEL PRODUCTION
+
+### 23.1. Hợp nhất và Đẩy lên nhánh main
+- Đã thực hiện `git checkout main` và `git merge feat/phase2-cloud-pilot` (Fast-forward 57 files).
+- Đã thực hiện `git push origin main` thành công lên GitHub `https://github.com/longtranphi2006-pixel/le-loi-loop.git`.
+- Vercel CI/CD tự động phát hiện commit mới trên nhánh `main` và kích hoạt quá trình build cập nhật trực tiếp tên miền chính thức: **`https://le-loi-loop.vercel.app/`**.
+
+### 23.2. Yêu cầu đồng bộ Database đi kèm
+- Để trang web hoạt động hoàn hảo các tính năng kiểm định trạm, chuông thông báo, khóa ô kệ và 3 hàm RPC, cần chạy file gộp [`upgrade_plan/STAGING_DEPLOY_ALL_REMAINING.sql`](file:///d:/Lê%20Lợi%20Loop/upgrade_plan/STAGING_DEPLOY_ALL_REMAINING.sql) trong SQL Editor của Supabase Staging (`ynkhukeqdqewakrqtvtu`).
+
+---
+
+## CHƯƠNG 24: KIỂM TOÁN VÀ NGHIỆM THU TOÀN DIỆN 24 CHỨC NĂNG CỐT LÕI (GIAI ĐOẠN HOÀN THIỆN THỰC TẾ)
+
+### 24.1. Kết quả kiểm toán cơ sở dữ liệu Supabase Staging (`ynkhukeqdqewakrqtvtu`)
+- **Tình trạng bảng cơ sở:** Cả 9 bảng (`users`, `items`, `requests`, `appointments`, `logs`, `notifications`, `station_slots`, `storage_assignments`, `profiles`) đã tồn tại, kích hoạt RLS.
+- **Sức chứa trạm:** 10 ô kệ (`K1-A1` đến `K1-B5`) đã được tạo và kích hoạt sẵn sàng nhận hiện vật.
+- **Tính năng nguyên tử:** 3 hàm RPC cốt lõi (`rpc_accept_request_by_donor`, `rpc_inspect_and_receive_item`, `rpc_complete_handover`) đã được triển khai, kiểm tra quyền và phiên đăng nhập chuẩn xác theo Security Definer.
+
+### 24.2. Khắc phục các lỗi thực tế (Bug Tracking)
+- **BUG-001 (P2 - Trải nghiệm chọn ô kệ tại Tab D):** Đã sửa dropdown gán ô kệ K1 trong `AdminDashboardPage.jsx` để tự động chọn ô trống đầu tiên thay vì cố định `K1-A2`, đồng thời hiển thị nhãn trạng thái và vô hiệu hóa các ô đã có đồ lưu giữ.
+- **BUG-002 (P2 - Điều hướng từ Tab C sang Tab D):** Đã bổ sung nút chuyển hướng nhanh trong Tab C khi có lịch hẹn đang chờ mang đến trạm kiểm định.
+- **BUG-003 (P2 - Hướng dẫn thêm đồ vào kệ Trạm):** Đã bổ sung hướng dẫn nghiệp vụ và nút tắt chuyển sang Bảng Quản lý khi xem các ô kệ trống trên `StationPage.jsx`.
+
+### 24.3. Bảng nghiệm thu 24 chức năng cốt lõi
+Toàn bộ chi tiết kiểm thử, kết quả mong đợi, kết quả thực tế và bằng chứng đã được ghi nhận đầy đủ tại tài liệu độc lập: [`QA_ACCEPTANCE_MATRIX_24.md`](file:///d:/Lê%20Lợi%20Loop/QA_ACCEPTANCE_MATRIX_24.md).
+- **Tổng số ca kiểm thử:** 24 kịch bản.
+- **Kết quả Local Automated Regression:** 17/17 PASS (`verify_phase2b_tests.js`).
+- **Kết quả Exchange Cycle End-to-End:** 36/36 PASS (`test_staging_exchange_cycle.js`).
+- **Kết quả Build Production:** 0 lỗi (Vite v6.4.5 hoàn tất trong 7.07s).
+
+
+---
+
+## CHƯƠNG 25: KHẮC PHỤC TRIỆT ĐỂ LỖI BẢO MẬT P0 VÀ CHUẨN BỊ AUTH STAGING
+
+### 25.1. Các lỗ hổng bảo mật P0/P1 được rà soát và khắc phục
+1. **Lỗ hổng lộ thông báo (P0):** Bỏ hoàn toàn mệnh đề `OR recipient_id IS NOT NULL` trong policy SELECT của bảng `notifications`. Chỉ người nhận chính chủ hoặc `service_role` mới đọc được thông báo.
+2. **Lỗ hổng giả mạo danh tính (P0):** Bỏ hoàn toàn `OR donor_id IS NOT NULL` và `OR requester_id IS NOT NULL` trong policy INSERT của `items`, `requests`, `appointments`. Bắt buộc tài khoản đã đăng nhập (`auth.uid() IS NOT NULL`) và ID phải khớp với `legacy_id` của chính mình.
+3. **Lỗ hổng giả mạo nhật ký kiểm toán (P0):** Bỏ `WITH CHECK (true)` và `SELECT USING (true)` trên `logs`, chỉ cho phép nhân sự (teacher, station_staff, admin) và `service_role` ghi/đọc logs, cấm UPDATE/DELETE hoàn toàn.
+4. **Lỗ hổng bảo vệ thông tin cá nhân (P0):** Bảng `users` được khóa chặt RLS, cấm anonymous đọc danh bạ số điện thoại, bảo vệ tính riêng tư của học sinh.
+5. **Lỗ hổng leo thang đặc quyền (P0):** Cài đặt trigger `trg_protect_profile_immutable_fields` khóa cứng `auth_user_id`, `legacy_user_id`, `role`, `points` chống học sinh tự đổi role thành giáo viên hoặc tự tăng điểm.
+6. **Lỗ hổng RPC và Replay Attack (P0):** Thu hồi EXECUTE của 3 RPC từ PUBLIC/anon; kiểm tra trạng thái món đồ, kiểm định chất lượng và khóa cứng mã nhận đồ đã sử dụng.
+
+### 25.2. File Migration vá bảo mật độc lập: `upgrade_plan/migrations/006_security_p0_fixes.sql`
+Đã lập migration độc lập 006 để người dùng kiểm tra và phê duyệt trước khi thực thi trên SQL Editor Supabase Staging (Project ID: `ynkhukeqdqewakrqtvtu`).
+
+### 25.3. Script tạo 4 tài khoản thử nghiệm an toàn: `scripts/setup_staging_accounts.sql`
+- Đảm bảo 4 dòng `public.users` tồn tại trước khi chèn `profiles`.
+- Không chứa số điện thoại giả lập (`phone = NULL`).
+- Điểm khởi tạo (`points`) = 0.
+- Kiểm tra đủ 4 email trước khi insert; chặn thành công giả bằng `RAISE EXCEPTION` khi thiếu email.
+
+### 25.4. Kết quả kiểm thử hồi quy bảo mật (31/31 PASS)
+Đã tạo bộ kiểm thử `scripts/verify_security_rules.js` với 31 kịch bản kiểm thử bao phủ toàn bộ các trường hợp hợp lệ và tấn công bất hợp lệ (100% PASS).

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES, STATION_SLOTS } from '../data/seedData';
+import PrintableTicketModal from '../components/PrintableTicketModal';
 import {
   ArrowLeft,
   Calendar,
@@ -32,6 +33,7 @@ export default function ItemDetailPage({ item, setActivePage }) {
   const [reason, setReason] = useState('');
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [inputMethod, setInputMethod] = useState('website');
+  const [generatedTicket, setGeneratedTicket] = useState(null);
 
   const itemRequests = item ? requests.filter(r => r.itemId === item.id) : [];
 
@@ -91,7 +93,7 @@ export default function ItemDetailPage({ item, setActivePage }) {
     }
   };
 
-  const handleSubmitRequest = (e) => {
+  const handleSubmitRequest = async (e) => {
     e.preventDefault();
     if (!reason.trim()) {
       alert('Vui lòng nhập lý do/nhu cầu nhận đồ của bạn!');
@@ -102,8 +104,25 @@ export default function ItemDetailPage({ item, setActivePage }) {
       return;
     }
 
-    addRequest(item.id, reason, selectedSlots, inputMethod);
+    const reqId = await addRequest(item.id, reason, selectedSlots, inputMethod);
     setShowRequestModal(false);
+
+    if (inputMethod === 'paper') {
+      const slotLabels = selectedSlots.map(s => STATION_SLOTS.find(sl => sl.id === s)?.label || s);
+      const catObj = CATEGORIES.find(c => c.id === item.category);
+      setGeneratedTicket({
+        ticketCode: `LL-2026-${(reqId || 'REQ').slice(-4)}`,
+        studentName: currentUser.name,
+        studentId: currentUser.id,
+        studentClass: currentUser.class,
+        studentShift: currentUser.shift,
+        itemTitle: item.title,
+        categoryName: catObj?.name,
+        slots: slotLabels
+      });
+      return;
+    }
+
     setActivePage('my-activity');
   };
 
@@ -488,6 +507,16 @@ export default function ItemDetailPage({ item, setActivePage }) {
             </form>
           </div>
         </div>
+      )}
+      {/* MODAL PHIẾU HẸN IN ẤN (PRINTABLE TICKET MODAL) */}
+      {generatedTicket && (
+        <PrintableTicketModal
+          ticket={generatedTicket}
+          onClose={() => {
+            setGeneratedTicket(null);
+            setActivePage('my-activity');
+          }}
+        />
       )}
     </div>
   );
