@@ -18,7 +18,9 @@ import {
   Check,
   RotateCcw,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Download,
+  BarChart3
 } from 'lucide-react';
 
 export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
@@ -897,17 +899,70 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
       )}
 
       {/* ======================================================== */}
-      {/* TAB F: NHẬT KÝ HỆ THỐNG (AUDIT LOGS) */}
+      {/* TAB F: NHẬT KÝ HỆ THỐNG & XUẤT SỐ LIỆU THỰC NGHIỆM */}
       {/* ======================================================== */}
       {adminTab === 'tabF' && (
-        <div className="bg-white rounded-3xl border border-gray-200 p-6 shadow-sm space-y-4">
-          <div className="border-b border-gray-100 pb-4">
-            <h2 className="text-lg font-bold text-gray-900">
-              Tab F: Nhật ký kiểm toán hệ thống (Audit Logs)
-            </h2>
-            <p className="text-xs text-gray-500">
-              Lưu vết toàn bộ dòng chảy dữ liệu: Đăng món, duyệt bài, bốc thăm, xếp lịch, tiếp nhận tại trạm và bàn giao hoàn tất.
-            </p>
+        <div className="bg-white rounded-3xl border border-gray-200 p-6 shadow-sm space-y-5">
+          <div className="border-b border-gray-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-emerald-700" />
+                <span>Tab F: Nhật ký kiểm toán & Thống kê thực nghiệm</span>
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Thu thập và lưu vết dữ liệu cho 57 học sinh: Đăng món, duyệt bài, bốc thăm, xếp lịch, kiểm định trạm và bàn giao.
+              </p>
+            </div>
+
+            {/* Nút Xuất Báo Cáo CSV */}
+            <button
+              onClick={() => {
+                const header = "Thoi_Diem,Hanh_Dong,Chi_Tiet,Vai_Tro\n";
+                const rows = logs.map(l => `"${l.timestamp}","${l.action}","${l.details.replace(/"/g, '""')}","${l.role}"`).join("\n");
+                const blob = new Blob(["\uFEFF" + header + rows], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `LeLoiLoop_ThucNghiem_AuditLogs_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+              title="Tải về file CSV dữ liệu thực nghiệm để lập báo cáo"
+            >
+              <Download className="w-4 h-4" />
+              <span>Xuất dữ liệu CSV</span>
+            </button>
+          </div>
+
+          {/* KHỐI THỐNG KÊ NHANH CHO BÁO CÁO KHKT */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+              <div className="text-xs text-emerald-800 font-medium">Món đã đăng</div>
+              <div className="text-xl font-black text-emerald-950 mt-1">{items.length}</div>
+            </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
+              <div className="text-xs text-blue-800 font-medium">Đã phê duyệt</div>
+              <div className="text-xl font-black text-blue-950 mt-1">
+                {items.filter(i => i.status === 'approved' || i.status === 'stored' || i.status === 'completed').length}
+              </div>
+            </div>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+              <div className="text-xs text-amber-800 font-medium">Yêu cầu nhận</div>
+              <div className="text-xl font-black text-amber-950 mt-1">{requests.length}</div>
+            </div>
+            <div className="p-3 bg-purple-50 border border-purple-200 rounded-2xl">
+              <div className="text-xs text-purple-800 font-medium">Hoàn tất bàn giao</div>
+              <div className="text-xl font-black text-purple-950 mt-1">
+                {appointments.filter(a => a.status === 'completed').length}
+              </div>
+            </div>
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl col-span-2 sm:col-span-1">
+              <div className="text-xs text-rose-800 font-medium">Từ chối / Cần sửa</div>
+              <div className="text-xl font-black text-rose-950 mt-1">
+                {items.filter(i => i.status === 'rejected' || i.status === 'needs_update').length}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2 max-h-[500px] overflow-y-auto">
