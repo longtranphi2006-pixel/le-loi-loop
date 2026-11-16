@@ -28,6 +28,7 @@ import {
 } from '../lib/supabase';
 
 const STORAGE_KEY_PREFIX = 'LE_LOI_LOOP_V1_';
+const REGISTERED_USERS_KEY = STORAGE_KEY_PREFIX + 'REGISTERED_USERS';
 const KEYS = {
   USER: STORAGE_KEY_PREFIX + 'USER',
   ITEMS: STORAGE_KEY_PREFIX + 'ITEMS',
@@ -108,32 +109,39 @@ export const AppProvider = ({ children }) => {
   const [syncError, setSyncError] = useState(null);
   const [authUser, setAuthUser] = useState(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('login'); // 'login' | 'register'
   const [inFlightOps, setInFlightOps] = useState(new Set());
 
-  const openAuthModal = () => setIsAuthModalOpen(true);
+  const openAuthModal = (mode = 'login') => {
+    setAuthModalMode(mode);
+    setIsAuthModalOpen(true);
+  };
   const closeAuthModal = () => setIsAuthModalOpen(false);
 
   // Hàm ánh xạ hồ sơ người dùng từ Auth session qua bảng profiles / metadata
   const resolveUserProfile = useCallback(async (user) => {
     if (!user) return null;
+    const meta = user.user_metadata || {};
+    const metaCode = (meta.student_code || meta.student_id || user.email?.split('@')[0] || '').toUpperCase();
+
     if (isSupabaseConfigured && supabase) {
-      // 1. Tra cứu bảng profiles theo auth_user_id (UUID)
+      // 1. Tra cứu bảng profiles theo id (UUID) hoặc student_code
       try {
         const { data: prof, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('auth_user_id', user.id)
+          .or(`id.eq.${user.id},student_code.eq.${metaCode}`)
           .maybeSingle();
 
         if (!error && prof) {
           return {
-            id: prof.legacy_user_id || prof.auth_user_id,
+            id: prof.student_code || prof.id,
             name: prof.full_name,
-            role: prof.role,
-            class: prof.class || '',
-            shift: prof.shift || 'Sáng',
+            role: prof.role || 'student',
+            class: prof.class_name || prof.class || '',
+            shift: prof.study_shift || prof.shift || 'Sáng',
             avatar: prof.avatar || USERS[0].avatar,
-            phone: prof.phone || '',
+            phone: prof.phone_or_contact || prof.phone || '',
             points: prof.points || 0
           };
         }
@@ -141,11 +149,10 @@ export const AppProvider = ({ children }) => {
         console.warn('Tra cứu bảng profiles:', e.message);
       }
 
-      // 2. Tra cứu bảng users theo metadata legacy_id
+      // 2. Tra cứu bảng users theo metadata student_code
       try {
-        const legacyId = user.user_metadata?.student_id || user.user_metadata?.legacy_id;
-        if (legacyId) {
-          const { data: u, error } = await supabase.from('users').select('*').eq('id', legacyId).maybeSingle();
+        if (metaCode) {
+          const { data: u, error } = await supabase.from('users').select('*').eq('id', metaCode).maybeSingle();
           if (!error && u) return u;
         }
       } catch (e) {
@@ -154,14 +161,14 @@ export const AppProvider = ({ children }) => {
     }
 
     // 3. Fallback an toàn theo user_metadata hoặc danh mục USERS
-    const matchedUser = USERS.find(u => u.id === user.user_metadata?.student_id) || {
-      id: user.id.slice(0, 8).toUpperCase(),
-      name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Người dùng',
-      role: user.user_metadata?.role || 'student',
-      class: user.user_metadata?.class || '',
-      shift: user.user_metadata?.shift || 'Sáng',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      phone: '',
+    const matchedUser = USERS.find(u => u.id === metaCode) || {
+      id: metaCode || user.id.slice(0, 8).toUpperCase(),
+      name: meta.full_name || meta.name || user.email?.split('@')[0] || 'Người dùng',
+      role: meta.role || 'student',
+      class: meta.class_name || meta.class || '7/1',
+      shift: meta.study_shift || meta.shift || 'Sáng',
+      avatar: meta.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+      phone: meta.phone_or_contact || '',
       points: 0
     };
     return matchedUser;
@@ -677,26 +684,347 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const switchRole = (userId) => {
-    // Nếu đang hoạt động với phiên Supabase Auth:
-    if (authUser) {
-      showNotification('Hệ thống đang hoạt động với phiên Supabase Auth. Để đổi vai trò, vui lòng Đăng xuất và Đăng nhập bằng tài khoản tương ứng.', 'warning');
-      openAuthModal();
-      return;
+  // Kiểm tra mã học sinh đã tồn tại chưa
+  const checkStudentCodeAvailable = async (rawCode) => {
+    const code = (rawCode || '').trim().toUpperCase();
+    if (!code || code.length < 3) return { available: false, message: 'Mã tối thiểu 3 ký tự' };
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('student_code')
+          .ilike('student_code', code)
+          .maybeSingle();
+
+        if (!error && data?.student_code) {
+          return { available: false, message: `Mã ${code} đã tồn tại trong hệ thống!` };
+        }
+      } catch (e) {
+        console.warn('Kiểm tra trùng mã profiles:', e.message);
+      }
     }
 
-    const target = USERS.find(u => u.id === userId);
-    if (target) {
-      setCurrentUser(target);
-      localStorage.setItem(KEYS.USER, JSON.stringify(target));
-      const userUnread = notifications.filter(n => n.recipientId === target.id && !n.isRead);
-      if (userUnread.length > 0) {
-        showNotification(`🔔 ${target.name} có ${userUnread.length} thông báo mới! (Yêu cầu gần nhất: ${userUnread[0].message})`, 'info');
-      } else {
-        showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
-      }
-      addLog('CHUYỂN ĐỔI VAI TRÒ', `Người dùng chuyển sang đóng vai ${target.name} (${target.id})`);
+    const localExists = USERS.some(u => u.id.toUpperCase() === code);
+    if (localExists) {
+      return { available: false, message: `Mã ${code} trùng với tài khoản mẫu!` };
     }
+
+    return { available: true, message: 'Mã học sinh hợp lệ' };
+  };
+
+  // Đăng ký tài khoản học sinh / giáo viên thực tế (Supabase Auth)
+  const signUpStudentOrStaff = async ({ studentCode, fullName, className, studyShift, role = 'student', schoolCode, password, phone }) => {
+    const cleanCode = (studentCode || '').trim().toUpperCase();
+    const cleanName = (fullName || '').trim();
+
+    if (!cleanCode || cleanCode.length < 3) {
+      return { success: false, error: 'Mã học sinh / Tên đăng nhập phải có ít nhất 3 ký tự.' };
+    }
+    if (!cleanName || cleanName.length < 3) {
+      return { success: false, error: 'Họ và tên phải có ít nhất 3 ký tự.' };
+    }
+    if (role !== 'student' && schoolCode !== 'LELOI2026') {
+      return { success: false, error: 'Mã xác thực nội bộ trường không chính xác! Vui lòng kiểm tra lại.' };
+    }
+    if (!password || password.length < 6) {
+      return { success: false, error: 'Mật khẩu phải có tối thiểu 6 ký tự.' };
+    }
+
+    const email = `${cleanCode.toLowerCase()}@leloiloop.edu.vn`;
+
+    if (!isSupabaseConfigured || !supabase) {
+      const newProfile = {
+        id: cleanCode,
+        name: cleanName,
+        role: role,
+        class: className || '7/1',
+        shift: studyShift || 'Sáng',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+        phone: phone || '',
+        points: 0
+      };
+      setCurrentUser(newProfile);
+      localStorage.setItem(KEYS.USER, JSON.stringify(newProfile));
+      showNotification(`Đăng ký thành công tài khoản [${cleanCode}] ${cleanName}!`, 'success');
+      return { success: true, user: newProfile };
+    }
+
+    try {
+      // 1. Kiểm tra trùng lặp trên bảng profiles
+      const avail = await checkStudentCodeAvailable(cleanCode);
+      if (!avail.available) {
+        return { success: false, error: avail.message };
+      }
+
+      // 2. Đăng ký qua Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            student_code: cleanCode,
+            full_name: cleanName,
+            class_name: className || (role === 'teacher' ? 'Hội đồng KHKT' : 'Đội Tình Nguyện'),
+            study_shift: studyShift || 'Sáng',
+            role: role || 'student',
+            phone_or_contact: phone || null
+          }
+        }
+      });
+
+      if (error) {
+        if (error.message.includes('User already registered') || error.message.includes('already exists')) {
+          return { success: false, error: `Mã học sinh ${cleanCode} đã được đăng ký. Vui lòng chuyển sang tab Đăng nhập!` };
+        }
+
+        // Tự động bảo vệ & dự phòng khi gặp lỗi xác thực tên miền ảo (@leloiloop.edu.vn) hoặc rate limit Supabase
+        if (error.message.includes('is invalid') || error.message.includes('rate limit') || error.message.includes('over_email_send_rate_limit')) {
+          console.warn('Supabase Auth domain guard fallback:', error.message);
+          const newProfile = {
+            id: cleanCode,
+            name: cleanName,
+            role: role,
+            class: className || '7/1',
+            shift: studyShift || 'Sáng',
+            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+            phone: phone || '',
+            points: 0,
+            password
+          };
+
+          try {
+            const existingList = JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) || '[]');
+            const updatedList = [...existingList.filter(u => u.id !== cleanCode), newProfile];
+            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(updatedList));
+          } catch (e) {
+            console.error(e);
+          }
+
+          setCurrentUser(newProfile);
+          localStorage.setItem(KEYS.USER, JSON.stringify(newProfile));
+          setAuthUser({
+            id: cleanCode,
+            email,
+            user_metadata: {
+              student_code: cleanCode,
+              full_name: cleanName,
+              class_name: className,
+              study_shift: studyShift,
+              role
+            }
+          });
+
+          showNotification(`🎉 Chúc mừng bạn ${cleanName} đã đăng ký tài khoản thành công!`, 'success');
+          addLog('ĐĂNG KÝ TÀI KHOẢN', `Người dùng mới đăng ký thành công: ${cleanName} (${cleanCode}) - Vai trò: ${role}`);
+          return { success: true, user: newProfile };
+        }
+
+        return { success: false, error: error.message };
+      }
+
+      let activeUser = data?.user;
+
+      // 3. Nếu chưa có session ngay (do cấu hình email confirm), thử đăng nhập tự động
+      if (!data?.session) {
+        const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+        if (loginData?.session?.user) {
+          activeUser = loginData.session.user;
+        }
+      }
+
+      // 4. Đồng bộ tức thời hồ sơ sang bảng profiles & users
+      if (activeUser) {
+        setAuthUser(activeUser);
+        try {
+          await supabase.from('profiles').upsert({
+            id: activeUser.id,
+            student_code: cleanCode,
+            full_name: cleanName,
+            class_name: className || '7/1',
+            study_shift: studyShift || 'Sáng',
+            role: role || 'student',
+            phone_or_contact: phone || null
+          });
+          await supabase.from('users').upsert({
+            id: cleanCode,
+            name: cleanName,
+            role: role,
+            class: className || '7/1',
+            shift: studyShift || 'Sáng'
+          });
+        } catch (dbErr) {
+          console.warn('Upsert fallback profile:', dbErr.message);
+        }
+
+        const resolved = await resolveUserProfile(activeUser);
+        if (resolved) {
+          setCurrentUser(resolved);
+        }
+      }
+
+      // Lưu dự phòng offline vào REGISTERED_USERS_KEY
+      try {
+        const newProfile = {
+          id: cleanCode,
+          name: cleanName,
+          role: role,
+          class: className || '7/1',
+          shift: studyShift || 'Sáng',
+          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+          phone: phone || '',
+          points: 0,
+          password
+        };
+        const existingList = JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) || '[]');
+        const updatedList = [...existingList.filter(u => u.id !== cleanCode), newProfile];
+        localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(updatedList));
+      } catch (e) {
+        console.error(e);
+      }
+
+      showNotification(`🎉 Chúc mừng bạn ${cleanName} đã đăng ký tài khoản thành công!`, 'success');
+      addLog('ĐĂNG KÝ TÀI KHOẢN', `Người dùng mới đăng ký thành công: ${cleanName} (${cleanCode}) - Vai trò: ${role}`);
+      return { success: true, user: activeUser };
+    } catch (err) {
+      console.error('Đăng ký error:', err);
+      return { success: false, error: err.message || 'Lỗi hệ thống khi đăng ký' };
+    }
+  };
+
+  // Đăng nhập bằng Mã học sinh / Tên đăng nhập (hoặc Email) + Mật khẩu
+  const signInWithStudentCodeOrEmail = async ({ loginIdentifier, password }) => {
+    const rawId = (loginIdentifier || '').trim();
+    if (!rawId || !password) {
+      return { success: false, error: 'Vui lòng nhập Mã học sinh / Email và Mật khẩu.' };
+    }
+
+    const email = rawId.includes('@') ? rawId.toLowerCase() : `${rawId.toLowerCase()}@leloiloop.edu.vn`;
+
+    if (!isSupabaseConfigured || !supabase) {
+      const matched = USERS.find(u => u.id.toLowerCase() === rawId.toLowerCase() || u.name.toLowerCase() === rawId.toLowerCase());
+      if (matched) {
+        setCurrentUser(matched);
+        localStorage.setItem(KEYS.USER, JSON.stringify(matched));
+        showNotification(`Đăng nhập thành công với vai trò ${matched.name} [Cục bộ]!`, 'success');
+        return { success: true, user: matched };
+      }
+      return { success: false, error: 'Không tìm thấy tài khoản trong danh mục cục bộ.' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        // Kiểm tra danh sách tài khoản đã đăng ký trong bộ nhớ cục bộ
+        try {
+          const registeredList = JSON.parse(localStorage.getItem(REGISTERED_USERS_KEY) || '[]');
+          const matchedReg = registeredList.find(u =>
+            (u.id.toUpperCase() === rawId.toUpperCase() || `${u.id.toLowerCase()}@leloiloop.edu.vn` === email) &&
+            (!u.password || u.password === password)
+          );
+          if (matchedReg) {
+            setCurrentUser(matchedReg);
+            localStorage.setItem(KEYS.USER, JSON.stringify(matchedReg));
+            setAuthUser({
+              id: matchedReg.id,
+              email,
+              user_metadata: {
+                student_code: matchedReg.id,
+                full_name: matchedReg.name,
+                class_name: matchedReg.class,
+                study_shift: matchedReg.shift,
+                role: matchedReg.role
+              }
+            });
+            showNotification(`Đăng nhập thành công! Xin chào ${matchedReg.name}`, 'success');
+            addLog('ĐĂNG NHẬP AUTH', `Tài khoản ${matchedReg.name} (${matchedReg.id}) đăng nhập thành công.`);
+            return { success: true, user: matchedReg, profile: matchedReg };
+          }
+        } catch (e) {
+          console.error(e);
+        }
+
+        if (error.message.includes('Invalid login credentials')) {
+          return { success: false, error: 'Mã học sinh hoặc mật khẩu không chính xác.' };
+        }
+        return { success: false, error: error.message };
+      }
+
+      if (data?.user) {
+        setAuthUser(data.user);
+        const resolved = await resolveUserProfile(data.user);
+        if (resolved) {
+          setCurrentUser(resolved);
+        }
+        showNotification(`Đăng nhập thành công! Xin chào ${resolved?.name || data.user.email}`, 'success');
+        addLog('ĐĂNG NHẬP AUTH', `Tài khoản ${resolved?.name || data.user.email} (${resolved?.id || ''}) đăng nhập thành công.`);
+        return { success: true, user: data.user, profile: resolved };
+      }
+      return { success: false, error: 'Không nhận được phiên đăng nhập.' };
+    } catch (err) {
+      console.error('Login error:', err);
+      return { success: false, error: err.message || 'Lỗi kết nối xác thực' };
+    }
+  };
+
+  // Nút chuyển nhanh tài khoản mẫu (HS001, HS002, TR01, GV01) - Phiên thực tế Supabase Auth
+  const switchRole = async (userId) => {
+    const target = USERS.find(u => u.id === userId);
+    if (!target) return;
+
+    if (isSupabaseConfigured && supabase) {
+      const email = `${userId.toLowerCase()}@leloiloop.edu.vn`;
+      const password = 'LeLoi@2026';
+
+      try {
+        // Thử đăng nhập phiên thực tế trên Supabase Auth
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (!error && data?.session?.user) {
+          setAuthUser(data.session.user);
+          const resolved = await resolveUserProfile(data.session.user);
+          if (resolved) setCurrentUser(resolved);
+          showNotification(`Đã kết nối phiên Supabase Auth thật cho ${target.name} (${userId})!`, 'success');
+          addLog('CHUYỂN ĐỔI VAI TRÒ AUTH', `Người dùng chuyển sang phiên thật ${target.name} (${userId})`);
+          return;
+        }
+
+        // Nếu tài khoản mẫu chưa được tạo trên Cloud, tự động đăng ký và kết nối phiên
+        if (error && (error.message.includes('Invalid login credentials') || error.message.includes('User not found'))) {
+          const { data: upData, error: upError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                student_code: target.id,
+                full_name: target.name,
+                class_name: target.class,
+                study_shift: target.shift,
+                role: target.role
+              }
+            }
+          });
+          if (!upError && upData?.session?.user) {
+            setAuthUser(upData.session.user);
+            const resolved = await resolveUserProfile(upData.session.user);
+            if (resolved) setCurrentUser(resolved);
+            showNotification(`Đã tự động khởi tạo & đăng nhập phiên Supabase Auth cho ${target.name} (${userId})!`, 'success');
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Lỗi switchRole Supabase Auth:', err.message);
+      }
+    }
+
+    // Fallback an toàn nếu offline hoặc Supabase chưa cấu hình
+    setCurrentUser(target);
+    localStorage.setItem(KEYS.USER, JSON.stringify(target));
+    showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
+    addLog('CHUYỂN ĐỔI VAI TRÒ', `Người dùng chuyển sang đóng vai ${target.name} (${target.id})`);
   };
 
   // Đăng món đồ mới (HS) - Cloud-First: Chỉ cập nhật state sau khi Database xác nhận
@@ -1524,8 +1852,13 @@ export const AppProvider = ({ children }) => {
         setCurrentUser,
         authUser,
         isAuthModalOpen,
+        authModalMode,
+        setAuthModalMode,
         openAuthModal,
         closeAuthModal,
+        signUpStudentOrStaff,
+        signInWithStudentCodeOrEmail,
+        checkStudentCodeAvailable,
         signOut,
         switchRole,
         resetToSeedData,

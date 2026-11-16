@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import RoleSwitcher from './components/RoleSwitcher';
 import Navbar from './components/Navbar';
@@ -16,10 +16,30 @@ import AuthModal from './components/AuthModal';
 import { CheckCircle2, AlertCircle, Info, XCircle } from 'lucide-react';
 
 function MainContent() {
-  const { notification, syncStatus, syncError, isAuthModalOpen, closeAuthModal } = useApp();
+  const { notification, syncStatus, syncError, isAuthModalOpen, openAuthModal, closeAuthModal } = useApp();
   const [activePage, setActivePage] = useState('home');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedItem, setSelectedItem] = useState(null);
+
+  // Hỗ trợ nhận diện URL /register hoặc /login (cả pathname và hash)
+  useEffect(() => {
+    const checkAuthUrl = () => {
+      const path = (window.location.pathname || '').toLowerCase();
+      const hash = (window.location.hash || '').toLowerCase();
+      if (path.includes('/register') || hash.includes('register')) {
+        openAuthModal('register');
+      } else if (path.includes('/login') || hash.includes('login')) {
+        openAuthModal('login');
+      }
+    };
+    checkAuthUrl();
+    window.addEventListener('hashchange', checkAuthUrl);
+    window.addEventListener('popstate', checkAuthUrl);
+    return () => {
+      window.removeEventListener('hashchange', checkAuthUrl);
+      window.removeEventListener('popstate', checkAuthUrl);
+    };
+  }, [openAuthModal]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FDFBF7] text-gray-800">

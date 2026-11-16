@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES, STATION_SLOTS } from '../data/seedData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -46,6 +46,19 @@ export default function DonatePage({ setActivePage }) {
 
   // Trạng thái Phiếu hẹn in ấn
   const [generatedTicket, setGeneratedTicket] = useState(null);
+
+  // Tự động điền & gợi ý khung giờ rảnh theo buổi học chính (study_shift) của hồ sơ
+  useEffect(() => {
+    if (currentUser?.shift) {
+      if (currentUser.shift === 'Sáng') {
+        const pmSlots = STATION_SLOTS.filter(s => s.period === 'PM').map(s => s.id);
+        setAvailableSlots(pmSlots.length > 0 ? pmSlots : ['T2_PM', 'T3_PM']);
+      } else if (currentUser.shift === 'Chiều') {
+        const amSlots = STATION_SLOTS.filter(s => s.period === 'AM').map(s => s.id);
+        setAvailableSlots(amSlots.length > 0 ? amSlots : ['T2_AM', 'T3_AM']);
+      }
+    }
+  }, [currentUser?.shift, currentUser?.id]);
 
   const handleToggleSlot = (slotId) => {
     if (availableSlots.includes(slotId)) {

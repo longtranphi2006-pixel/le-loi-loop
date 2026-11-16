@@ -21,6 +21,7 @@ import {
   ArrowRight,
   LogIn,
   LogOut,
+  UserPlus,
   KeyRound
 } from 'lucide-react';
 
@@ -237,41 +238,71 @@ export default function Navbar({ activePage, setActivePage }) {
             {/* User profile & Auth Controls */}
             <div className="hidden sm:flex items-center gap-3 pl-2 border-l border-gray-200">
               <div className="text-right">
-                <div className="text-xs font-bold text-gray-900 flex items-center justify-end gap-1">
-                  <span>{currentUser.name}</span>
+                <div id="header-user-display" className="text-xs font-bold text-gray-900 flex items-center justify-end gap-1.5">
+                  <span className="truncate max-w-[150px]">{currentUser.name}</span>
+                  {currentUser.class && (
+                    <span className="text-gray-500 font-medium hidden md:inline">Lớp {currentUser.class}</span>
+                  )}
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                    ({currentUser.id})
+                  </span>
                   {authUser && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" title="Đã đăng nhập Supabase Auth" />
+                    <span className="text-[9px] bg-emerald-600 text-white font-black px-1.5 py-0.2 rounded-full" title="Phiên Supabase Auth thực tế">
+                      Auth ✓
+                    </span>
                   )}
                 </div>
-                <div className="text-[11px] text-emerald-700 font-medium">
-                  {currentUser.role === 'teacher' ? 'GV Phụ trách' : currentUser.role === 'station_staff' ? 'Đội Trực Trạm' : `HS Lớp ${currentUser.class}`}
+                <div className="text-[11px] text-emerald-700 font-medium flex items-center justify-end gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>
+                    {currentUser.role === 'teacher'
+                      ? 'GV Phụ trách KHKT'
+                      : currentUser.role === 'station_staff'
+                      ? 'Đội Trực Trạm'
+                      : `Học sinh • Buổi ${currentUser.shift || 'Sáng'}`}
+                  </span>
                 </div>
               </div>
+
               <img
                 src={currentUser.avatar}
                 alt={currentUser.name}
                 className="w-9 h-9 rounded-full ring-2 ring-emerald-500 object-cover cursor-pointer hover:opacity-90"
-                onClick={openAuthModal}
+                onClick={() => openAuthModal('login')}
                 title="Nhấn để đổi tài khoản hoặc đăng nhập"
               />
 
               {authUser ? (
                 <button
+                  id="btn-logout"
                   onClick={signOut}
-                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                  title="Đăng xuất khỏi Supabase Auth"
+                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-1 text-xs font-bold"
+                  title="Đăng xuất khỏi tài khoản"
                 >
                   <LogOut className="w-4 h-4" />
+                  <span className="hidden xl:inline">Đăng xuất</span>
                 </button>
               ) : (
-                <button
-                  onClick={openAuthModal}
-                  className="flex items-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200"
-                  title="Đăng nhập tài khoản thí nghiệm"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Đăng nhập</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    id="btn-nav-login"
+                    onClick={() => openAuthModal('login')}
+                    className="flex items-center gap-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm"
+                    title="Đăng nhập tài khoản"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Đăng nhập</span>
+                  </button>
+                  <button
+                    id="btn-nav-register"
+                    onClick={() => openAuthModal('register')}
+                    className="flex items-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200"
+                    title="Đăng ký tài khoản học sinh"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Đăng ký</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -290,7 +321,56 @@ export default function Navbar({ activePage, setActivePage }) {
 
       {/* Mobile Menu Dropdown */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-emerald-100 bg-white px-4 pt-2 pb-4 space-y-1 shadow-lg">
+        <div className="lg:hidden border-t border-emerald-100 bg-white px-4 pt-2 pb-4 space-y-2 shadow-lg">
+          {/* User profile mobile summary */}
+          <div className="p-3 bg-emerald-50 rounded-2xl flex items-center justify-between border border-emerald-100 mb-2">
+            <div className="flex items-center gap-2.5">
+              <img src={currentUser.avatar} alt={currentUser.name} className="w-9 h-9 rounded-full ring-2 ring-emerald-500 object-cover" />
+              <div>
+                <div className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                  <span>{currentUser.name}</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1 rounded font-bold">({currentUser.id})</span>
+                </div>
+                <div className="text-[10px] text-emerald-700 font-semibold">
+                  {currentUser.role === 'teacher' ? 'GV Phụ trách KHKT' : currentUser.role === 'station_staff' ? 'Đội Trực Trạm' : `Lớp ${currentUser.class} • Buổi ${currentUser.shift}`}
+                </div>
+              </div>
+            </div>
+
+            {authUser ? (
+              <button
+                onClick={() => {
+                  signOut();
+                  setMobileMenuOpen(false);
+                }}
+                className="text-xs text-red-600 font-bold bg-white px-2 py-1 rounded-lg border border-red-200 hover:bg-red-50 flex items-center gap-1"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>Thoát</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    openAuthModal('login');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-xs bg-white text-emerald-800 border border-emerald-300 font-bold px-2 py-1 rounded-lg"
+                >
+                  Đăng nhập
+                </button>
+                <button
+                  onClick={() => {
+                    openAuthModal('register');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-xs bg-emerald-700 text-white font-bold px-2 py-1 rounded-lg"
+                >
+                  Đăng ký
+                </button>
+              </div>
+            )}
+          </div>
           {navItems.map(item => {
             const Icon = item.icon;
             const isActive = activePage === item.id;

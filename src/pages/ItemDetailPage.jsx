@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES, STATION_SLOTS } from '../data/seedData';
 import PrintableTicketModal from '../components/PrintableTicketModal';
@@ -34,6 +34,19 @@ export default function ItemDetailPage({ item, setActivePage }) {
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [inputMethod, setInputMethod] = useState('website');
   const [generatedTicket, setGeneratedTicket] = useState(null);
+
+  // Tự động gợi ý khung giờ rảnh khi mở modal yêu cầu dựa theo study_shift của người nhận
+  useEffect(() => {
+    if (showRequestModal && currentUser?.shift) {
+      if (currentUser.shift === 'Sáng') {
+        const pmSlots = STATION_SLOTS.filter(s => s.period === 'PM').map(s => s.id);
+        setSelectedSlots(pmSlots.length > 0 ? pmSlots : ['T2_PM', 'T3_PM']);
+      } else if (currentUser.shift === 'Chiều') {
+        const amSlots = STATION_SLOTS.filter(s => s.period === 'AM').map(s => s.id);
+        setSelectedSlots(amSlots.length > 0 ? amSlots : ['T2_AM', 'T3_AM']);
+      }
+    }
+  }, [showRequestModal, currentUser?.shift]);
 
   const itemRequests = item ? requests.filter(r => r.itemId === item.id) : [];
 

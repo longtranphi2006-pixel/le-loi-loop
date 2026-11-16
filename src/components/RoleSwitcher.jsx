@@ -112,53 +112,37 @@ export default function RoleSwitcher() {
           </div>
         </div>
 
-        {/* Danh sách vai trò hoặc Nút mở đăng nhập */}
-        {authUser ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-emerald-800 font-bold hidden sm:inline flex items-center gap-1">
-              <UserCheck className="w-4 h-4 text-emerald-600 inline" />
-              Phiên thí điểm hoạt động
-            </span>
-            <button
-              onClick={openAuthModal}
-              className="flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Đổi tài khoản</span>
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5">
-            {users.map(u => {
-              const isActive = currentUser.id === u.id;
-              return (
-                <button
-                  key={u.id}
-                  onClick={() => switchRole(u.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                  }`}
-                  title={`${u.name} (${u.role})`}
-                >
-                  <span className="font-bold text-[11px]">{u.id}</span>
-                  <span className="hidden sm:inline">{u.id === 'HS001' ? 'Bảo An' : u.id === 'HS002' ? 'Hoàng Nam' : u.id === 'TR01' ? 'Đội trực' : 'Thầy A'}</span>
-                </button>
-              );
-            })}
-            {isSupabaseConfigured && (
+        {/* Danh sách 4 vai trò Demo Quick-Switch (Kích hoạt phiên Supabase Auth thật khi bấm) */}
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5">
+          {users.map(u => {
+            const isActive = currentUser.id === u.id;
+            return (
               <button
-                onClick={openAuthModal}
-                className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shrink-0 ml-1"
-                title="Đăng nhập tài khoản Supabase Auth"
+                key={u.id}
+                id={`btn-switch-${u.id.toLowerCase()}`}
+                onClick={() => switchRole(u.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+                  isActive
+                    ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+                title={`Đăng nhập phiên thật: ${u.name} (${u.role})`}
               >
-                <KeyRound className="w-3 h-3 text-emerald-600" />
-                <span className="hidden sm:inline">Auth</span>
+                <span className="font-bold text-[11px]">{u.id}</span>
+                <span className="hidden sm:inline">{u.id === 'HS001' ? 'Bảo An' : u.id === 'HS002' ? 'Hoàng Nam' : u.id === 'TR01' ? 'Đội trực' : 'Thầy A'}</span>
               </button>
-            )}
-          </div>
-        )}
+            );
+          })}
+          <button
+            id="btn-roleswitcher-account"
+            onClick={() => openAuthModal('login')}
+            className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shrink-0 ml-1"
+            title="Đăng nhập tài khoản khác"
+          >
+            <KeyRound className="w-3 h-3 text-emerald-600" />
+            <span className="hidden sm:inline">Tài khoản</span>
+          </button>
+        </div>
 
         {/* CÁC NÚT ĐIỀU KHIỂN TRÌNH DIỄN KHKT */}
         <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-gray-200">
