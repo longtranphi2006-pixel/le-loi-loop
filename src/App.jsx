@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import RoleSwitcher from './components/RoleSwitcher';
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
@@ -43,21 +42,18 @@ function MainContent() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FDFBF7] text-gray-800">
-      {/* 1. TOPBAR BANNER & FLOATING ROLE SWITCHER */}
-      <RoleSwitcher />
-
       {/* CLOUD SYNC ERROR BANNER (NẾU MẤT ĐỒNG BỘ) */}
       {syncStatus === 'sync_error' && (
         <div className="bg-red-600 text-white text-xs py-2 px-4 text-center font-bold flex items-center justify-center gap-2 shadow-sm animate-pulse">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>CẢNH BÁO MẤT ĐỒNG BỘ CLOUD: {syncError || 'Không thể kết nối đến Supabase. Đang chạy ở chế độ cục bộ.'}</span>
+          <span>CẢNH BÁO MẤT ĐỒNG BỘ CLOUD: {syncError || 'Không thể kết nối đến Supabase.'}</span>
         </div>
       )}
 
-      {/* 2. MAIN HEADER & NAVBAR */}
+      {/* MAIN HEADER & NAVBAR */}
       <Navbar activePage={activePage} setActivePage={setActivePage} />
 
-      {/* AUTH MODAL CHO THỬ NGHIỆM ĐA THIẾT BỊ */}
+      {/* AUTH MODAL CHO ĐĂNG KÝ / ĐĂNG NHẬP */}
       <AuthModal isOpen={isAuthModalOpen} onClose={closeAuthModal} />
 
       {/* 3. TOAST NOTIFICATION */}
@@ -115,16 +111,18 @@ function MainContent() {
         )}
 
         {activePage === 'donate' && (
-          <DonatePage
-            setActivePage={setActivePage}
-          />
+          <ProtectedRoute allowedRoles={['student', 'teacher', 'station_staff', 'admin']} setActivePage={setActivePage}>
+            <DonatePage setActivePage={setActivePage} />
+          </ProtectedRoute>
         )}
 
         {activePage === 'my-activity' && (
-          <MyActivityPage
-            setActivePage={setActivePage}
-            setSelectedItem={setSelectedItem}
-          />
+          <ProtectedRoute allowedRoles={['student', 'teacher', 'station_staff', 'admin']} setActivePage={setActivePage}>
+            <MyActivityPage
+              setActivePage={setActivePage}
+              setSelectedItem={setSelectedItem}
+            />
+          </ProtectedRoute>
         )}
 
         {activePage === 'station' && (
@@ -165,7 +163,7 @@ function MainContent() {
             </p>
           </div>
           <div className="text-gray-400">
-            Ứng dụng KHKT • Đồng bộ thời gian thực Supabase Cloud • Phục vụ thử nghiệm 3–5 thiết bị
+            Hệ thống Vận hành Thực tế • Đồng bộ Supabase PostgreSQL Cloud • Trường THCS Lê Lợi, Đà Nẵng
           </div>
         </div>
       </footer>

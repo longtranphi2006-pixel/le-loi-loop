@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES } from '../data/seedData';
-import { Search, Filter, Sparkles, BookOpen, Clock, Tag, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Search, Filter, Sparkles, BookOpen, Clock, Tag, CheckCircle2, AlertCircle, PlusCircle, Package } from 'lucide-react';
 
 export default function CatalogPage({ selectedCategory, setSelectedCategory, setSelectedItem, setActivePage }) {
   const { items } = useApp();
@@ -146,7 +146,24 @@ export default function CatalogPage({ selectedCategory, setSelectedCategory, set
       </div>
 
       {/* ITEMS GRID */}
-      {filteredItems.length === 0 ? (
+      {items.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center space-y-4 max-w-lg mx-auto my-8 shadow-sm">
+          <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto ring-4 ring-emerald-100">
+            <Package className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-800">Kho đồ hiện chưa có món nào</h3>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Kho đồ đang trống. Hãy là học sinh đầu tiên chia sẻ đồ dùng học tập của mình để lan tỏa tinh thần sẻ chia nhé!
+          </p>
+          <button
+            onClick={() => setActivePage('donate')}
+            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-emerald-600/20 transition-all"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Đăng món đồ đầu tiên</span>
+          </button>
+        </div>
+      ) : filteredItems.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center space-y-3">
           <BookOpen className="w-12 h-12 text-gray-300 mx-auto" />
           <h3 className="text-base font-bold text-gray-700">Không tìm thấy món đồ phù hợp</h3>

@@ -183,13 +183,6 @@ export default function AuthModal({ isOpen, onClose }) {
     }
   };
 
-  // Helper điền nhanh tài khoản demo
-  const fillDemoAccount = (id, pwd = 'LeLoi@2026') => {
-    setLoginId(id);
-    setLoginPassword(pwd);
-    setErrorMessage('');
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
       <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-emerald-100 overflow-hidden relative max-h-[92vh] flex flex-col">
@@ -346,63 +339,6 @@ export default function AuthModal({ isOpen, onClose }) {
                   </>
                 )}
               </button>
-
-              {/* DEMO QUICK PICK CHIPS */}
-              <div className="pt-3 border-t border-gray-100 space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-gray-500 font-medium">
-                  <span>Tài khoản mẫu báo cáo KHKT:</span>
-                  <span className="text-emerald-700 font-semibold">(Mật khẩu: LeLoi@2026)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('HS001')}
-                    className="p-2 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/70 text-left text-emerald-950 transition-colors"
-                  >
-                    <div className="font-bold flex items-center justify-between">
-                      <span>HS001 (Bảo An)</span>
-                      <span className="text-[10px] bg-emerald-200 text-emerald-800 px-1 rounded">7/1</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500">Học sinh cho đồ (Sáng)</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('HS002')}
-                    className="p-2 rounded-xl border border-teal-200 bg-teal-50/50 hover:bg-teal-100/70 text-left text-teal-950 transition-colors"
-                  >
-                    <div className="font-bold flex items-center justify-between">
-                      <span>HS002 (Hoàng Nam)</span>
-                      <span className="text-[10px] bg-teal-200 text-teal-800 px-1 rounded">8/2</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500">Học sinh nhận đồ (Chiều)</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('TR01')}
-                    className="p-2 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-100/70 text-left text-amber-950 transition-colors"
-                  >
-                    <div className="font-bold flex items-center justify-between">
-                      <span>TR01 (Đội trực)</span>
-                      <span className="text-[10px] bg-amber-200 text-amber-800 px-1 rounded">CLB</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500">Trực trạm Phòng Đội</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('GV01')}
-                    className="p-2 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-100/70 text-left text-purple-950 transition-colors"
-                  >
-                    <div className="font-bold flex items-center justify-between">
-                      <span>GV01 (Thầy A)</span>
-                      <span className="text-[10px] bg-purple-200 text-purple-800 px-1 rounded">GV</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500">Giáo viên phụ trách</div>
-                  </button>
-                </div>
-              </div>
             </form>
           )}
 

@@ -30,6 +30,10 @@ const SAMPLE_IMAGES = [
 export default function DonatePage({ setActivePage }) {
   const { currentUser, addItem } = useApp();
 
+  if (!currentUser) {
+    return null;
+  }
+
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('sgk');
   const [condition, setCondition] = useState('Tốt');

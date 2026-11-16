@@ -27,7 +27,9 @@ export default function ItemDetailPage({ item, setActivePage }) {
     addRequest,
     requests,
     acceptRequestByDonor,
-    rejectRequestByDonor
+    rejectRequestByDonor,
+    openAuthModal,
+    showNotification
   } = useApp();
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [reason, setReason] = useState('');
@@ -67,13 +69,15 @@ export default function ItemDetailPage({ item, setActivePage }) {
   const categoryInfo = CATEGORIES.find(c => c.id === item.category);
 
   // Kiểm tra điều kiện có được gửi yêu cầu nhận không
-  const isDonor = currentUser.id === item.donorId;
+  const isDonor = currentUser ? currentUser.id === item.donorId : false;
   const isClosed = item.requestStatus === 'closed';
   const isCompleted = item.status === 'completed';
   const isRejected = item.status === 'rejected';
 
   // Kiểm tra xem user hiện tại đã gửi request cho món này chưa
-  const existingUserRequest = requests.find(r => r.itemId === item.id && r.requesterId === currentUser.id);
+  const existingUserRequest = currentUser
+    ? requests.find(r => r.itemId === item.id && r.requesterId === currentUser.id)
+    : null;
 
   const canRequest = !isDonor && !isClosed && !isCompleted && !isRejected && !existingUserRequest;
 
@@ -252,7 +256,14 @@ export default function ItemDetailPage({ item, setActivePage }) {
           <div className="pt-4 border-t border-gray-100 space-y-3">
             {canRequest ? (
               <button
-                onClick={() => setShowRequestModal(true)}
+                onClick={() => {
+                  if (!currentUser) {
+                    showNotification('Vui lòng đăng nhập tài khoản học sinh để tiếp tục!', 'warning');
+                    openAuthModal('login');
+                    return;
+                  }
+                  setShowRequestModal(true);
+                }}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
               >
                 <Heart className="w-5 h-5 text-emerald-200" />

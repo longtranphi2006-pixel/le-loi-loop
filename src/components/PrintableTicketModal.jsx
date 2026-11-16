@@ -56,7 +56,7 @@ export default function PrintableTicketModal({ ticket, onClose }) {
             <div className="flex flex-col items-center gap-1 shrink-0">
               <div className="w-20 h-20 bg-white border border-gray-300 p-1.5 rounded-lg flex items-center justify-center shadow-inner print:border-black">
                 <div className="w-full h-full bg-black relative flex items-center justify-center p-1 rounded-sm">
-                  {/* Mô phỏng ô vuông QR góc */}
+                  {/* Ô định vị QR Code góc */}
                   <div className="absolute top-1 left-1 w-3.5 h-3.5 bg-white flex items-center justify-center">
                     <div className="w-2 h-2 bg-black"></div>
                   </div>

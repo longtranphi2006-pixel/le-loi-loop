@@ -37,6 +37,10 @@ export default function MyActivityPage({ setActivePage, setSelectedItem }) {
   const [activeTab, setActiveTab] = useState('incoming'); // 'incoming' | 'appointments' | 'requests' | 'posted'
   const [expandedItemId, setExpandedItemId] = useState(null);
 
+  if (!currentUser) {
+    return null;
+  }
+
   // 1. Món do user hiện tại đăng
   const myPostedItems = items.filter(i => i.donorId === currentUser.id);
   const myPostedItemIds = myPostedItems.map(i => i.id);

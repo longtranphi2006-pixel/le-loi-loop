@@ -44,63 +44,22 @@ export const AppProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem(KEYS.USER);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) return parsed;
+      }
     } catch (e) {
       console.error(e);
     }
-    return USERS[0]; // HS001 Trần Bảo An mặc định
+    return null; // Mặc định chưa đăng nhập (Khách vãng lai)
   });
 
-  const [items, setItems] = useState(() => {
-    try {
-      const saved = localStorage.getItem(KEYS.ITEMS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_ITEMS;
-  });
-
-  const [requests, setRequests] = useState(() => {
-    try {
-      const saved = localStorage.getItem(KEYS.REQUESTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_REQUESTS;
-  });
-
-  const [appointments, setAppointments] = useState(() => {
-    try {
-      const saved = localStorage.getItem(KEYS.APPOINTMENTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_APPOINTMENTS;
-  });
-
-  const [logs, setLogs] = useState(() => {
-    try {
-      const saved = localStorage.getItem(KEYS.LOGS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_LOGS;
-  });
-
-  // 6. Notifications (Thông báo thời gian thực giữa người cho và người nhận)
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const saved = localStorage.getItem(KEYS.NOTIFICATIONS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_NOTIFICATIONS;
-  });
+  // Trong chế độ Vận hành Thực tế (Production), dữ liệu lấy trực tiếp 100% từ Supabase
+  const [items, setItems] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [notifications, setNotifications] = useState([]);
 
   const [notification, setNotification] = useState(null);
   const [dbConnected, setDbConnected] = useState(false);
@@ -209,9 +168,15 @@ export const AppProvider = ({ children }) => {
 
   const signOut = async () => {
     if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('SignOut error:', e);
+      }
     }
     setAuthUser(null);
+    setCurrentUser(null);
+    localStorage.removeItem(KEYS.USER);
     showNotification('Đã đăng xuất khỏi tài khoản!', 'info');
   };
 
@@ -222,19 +187,18 @@ export const AppProvider = ({ children }) => {
     }, 4500);
   };
 
-  // Sync to localStorage as local cache/fallback
+  // Chỉ đồng bộ phiên đăng nhập của người dùng vào localStorage để duy trì trạng thái đăng nhập
   useEffect(() => {
     try {
-      localStorage.setItem(KEYS.USER, JSON.stringify(currentUser));
-      localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
-      localStorage.setItem(KEYS.REQUESTS, JSON.stringify(requests));
-      localStorage.setItem(KEYS.APPOINTMENTS, JSON.stringify(appointments));
-      localStorage.setItem(KEYS.LOGS, JSON.stringify(logs));
-      localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(notifications));
+      if (currentUser) {
+        localStorage.setItem(KEYS.USER, JSON.stringify(currentUser));
+      } else {
+        localStorage.removeItem(KEYS.USER);
+      }
     } catch (e) {
       console.error(e);
     }
-  }, [currentUser, items, requests, appointments, logs, notifications]);
+  }, [currentUser]);
 
   // Hàm tải dữ liệu từ Supabase - Supabase là Single Source of Truth
   const loadDataFromSupabase = useCallback(async () => {
@@ -253,80 +217,17 @@ export const AppProvider = ({ children }) => {
         supabase.from('notifications').select('*').order('created_at', { ascending: false })
       ]);
 
-      // Kiểm tra lỗi truy vấn cơ bản
-      if (itemsRes.error) throw new Error(`Lỗi tải Items: ${itemsRes.error.message}`);
-      if (requestsRes.error) throw new Error(`Lỗi tải Requests: ${requestsRes.error.message}`);
-      if (appointmentsRes.error) throw new Error(`Lỗi tải Appointments: ${appointmentsRes.error.message}`);
-      if (logsRes.error) throw new Error(`Lỗi tải Logs: ${logsRes.error.message}`);
+      if (itemsRes.error) console.warn('Lỗi tải Items:', itemsRes.error.message);
+      if (requestsRes.error) console.warn('Lỗi tải Requests:', requestsRes.error.message);
+      if (appointmentsRes.error) console.warn('Lỗi tải Appointments:', appointmentsRes.error.message);
+      if (logsRes.error) console.warn('Lỗi tải Logs:', logsRes.error.message);
 
-      // Nếu Cloud trả về danh sách có dữ liệu, cập nhật theo Cloud; nếu Cloud trống (chưa nạp seed data), nạp từ cache cục bộ hoặc INITIAL
-      if (Array.isArray(itemsRes.data) && itemsRes.data.length > 0) {
-        setItems(itemsRes.data.map(mapItemFromDb));
-      } else {
-        const local = localStorage.getItem(KEYS.ITEMS);
-        if (local) {
-          try {
-            const parsed = JSON.parse(local);
-            if (Array.isArray(parsed) && parsed.length > 0) setItems(parsed);
-            else setItems(INITIAL_ITEMS);
-          } catch (e) {
-            setItems(INITIAL_ITEMS);
-          }
-        } else {
-          setItems(INITIAL_ITEMS);
-        }
-      }
-
-      if (Array.isArray(requestsRes.data) && requestsRes.data.length > 0) {
-        setRequests(requestsRes.data.map(mapRequestFromDb));
-      } else {
-        const local = localStorage.getItem(KEYS.REQUESTS);
-        if (local) {
-          try {
-            const parsed = JSON.parse(local);
-            if (Array.isArray(parsed) && parsed.length > 0) setRequests(parsed);
-            else setRequests(INITIAL_REQUESTS);
-          } catch (e) {
-            setRequests(INITIAL_REQUESTS);
-          }
-        } else {
-          setRequests(INITIAL_REQUESTS);
-        }
-      }
-
-      if (Array.isArray(appointmentsRes.data) && appointmentsRes.data.length > 0) {
-        setAppointments(appointmentsRes.data.map(mapAppointmentFromDb));
-      } else {
-        const local = localStorage.getItem(KEYS.APPOINTMENTS);
-        if (local) {
-          try {
-            const parsed = JSON.parse(local);
-            if (Array.isArray(parsed) && parsed.length > 0) setAppointments(parsed);
-            else setAppointments(INITIAL_APPOINTMENTS);
-          } catch (e) {
-            setAppointments(INITIAL_APPOINTMENTS);
-          }
-        } else {
-          setAppointments(INITIAL_APPOINTMENTS);
-        }
-      }
-
-      if (Array.isArray(logsRes.data) && logsRes.data.length > 0) {
-        setLogs(logsRes.data.map(mapLogFromDb));
-      } else {
-        const local = localStorage.getItem(KEYS.LOGS);
-        if (local) {
-          try {
-            const parsed = JSON.parse(local);
-            if (Array.isArray(parsed) && parsed.length > 0) setLogs(parsed);
-            else setLogs(INITIAL_LOGS);
-          } catch (e) {
-            setLogs(INITIAL_LOGS);
-          }
-        } else {
-          setLogs(INITIAL_LOGS);
-        }
-      }
+      // Gán trực tiếp dữ liệu từ Supabase 100%, không dùng fallback mock seed data
+      setItems(Array.isArray(itemsRes.data) ? itemsRes.data.map(mapItemFromDb) : []);
+      setRequests(Array.isArray(requestsRes.data) ? requestsRes.data.map(mapRequestFromDb) : []);
+      setAppointments(Array.isArray(appointmentsRes.data) ? appointmentsRes.data.map(mapAppointmentFromDb) : []);
+      setLogs(Array.isArray(logsRes.data) ? logsRes.data.map(mapLogFromDb) : []);
+      setNotifications(Array.isArray(notifsRes?.data) ? notifsRes.data.map(mapNotifFromDb) : []);
 
       // Xử lý bảng notifications (có thể chưa chạy migration)
       if (!notifsRes.error && Array.isArray(notifsRes.data)) {
@@ -488,133 +389,13 @@ export const AppProvider = ({ children }) => {
     };
     setLogs(prev => [newLog, ...prev]);
 
-    if (isSupabaseConfigured && supabase && (currentUser.role === 'teacher' || currentUser.role === 'station_staff' || currentUser.role === 'admin')) {
+    if (isSupabaseConfigured && supabase && currentUser && (currentUser.role === 'teacher' || currentUser.role === 'station_staff' || currentUser.role === 'admin')) {
       try {
         await supabase.from('logs').insert([mapLogToDb(newLog)]);
       } catch (e) {
         console.warn('Ghi log kiểm toán Cloud:', e.message);
       }
     }
-  };
-
-  // Khôi phục dữ liệu ban đầu
-  const resetToSeedData = async () => {
-    localStorage.removeItem(KEYS.USER);
-    localStorage.removeItem(KEYS.ITEMS);
-    localStorage.removeItem(KEYS.REQUESTS);
-    localStorage.removeItem(KEYS.APPOINTMENTS);
-    localStorage.removeItem(KEYS.LOGS);
-
-    setCurrentUser(USERS[0]);
-    setItems(INITIAL_ITEMS);
-    setRequests(INITIAL_REQUESTS);
-    setAppointments(INITIAL_APPOINTMENTS);
-    setLogs(INITIAL_LOGS);
-
-    if (isSupabaseConfigured && supabase) {
-      uploadSeedToSupabase();
-    } else {
-      showNotification('Đã khôi phục dữ liệu demo ban đầu thành công!', 'info');
-    }
-    notifyOtherTabs('RESET_DEMO');
-  };
-
-  // Reset nhanh dữ liệu Demo trong 3 giây (Dành cho Giám khảo KHKT)
-  const quickResetDemo = async () => {
-    localStorage.removeItem(KEYS.ITEMS);
-    localStorage.removeItem(KEYS.REQUESTS);
-    localStorage.removeItem(KEYS.APPOINTMENTS);
-    localStorage.removeItem(KEYS.LOGS);
-
-    setItems(INITIAL_ITEMS);
-    setRequests(INITIAL_REQUESTS);
-    setAppointments(INITIAL_APPOINTMENTS);
-    setLogs(INITIAL_LOGS);
-
-    if (isSupabaseConfigured && supabase) {
-      uploadSeedToSupabase().catch(() => {});
-    }
-
-    notifyOtherTabs('RESET_DEMO');
-    showNotification('✓ Đã khôi phục dữ liệu ban đầu sạch đẹp trong 3 giây!', 'info');
-  };
-
-  // Chế độ Kịch bản Trình diễn 1 Chạm (One-Click Demo Tour)
-  const runDemoScenario = async () => {
-    const demoItemId = 'M-KHKT-TOAN7';
-    const demoReqId = 'REQ-KHKT-NAM8';
-    const demoAptId = 'APT-KHKT-2026';
-    const pickupCode = 'LOOP-2026';
-
-    const demoItem = {
-      id: demoItemId,
-      title: '[DEMO-KHKT] Sách Toán 7 (Chân Trời Sáng Tạo)',
-      category: 'sgk',
-      condition: 'Tốt',
-      description: 'Sách giáo khoa Toán 7 tập 1 & 2, giữ gìn cẩn thận, bọc bìa bóng kính sạch sẽ.',
-      donorId: 'HS001',
-      donorName: 'Trần Bảo An (7/1)',
-      availableSlots: ['T2_PM', 'T4_PM'],
-      inputMethod: 'website',
-      status: 'approved',
-      requestStatus: 'closed',
-      image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=80',
-      qualityCheck: 'Đạt kiểm định Phòng Đội THCS Lê Lợi',
-      storageSlot: 'K1-A1',
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-
-    const demoRequest = {
-      id: demoReqId,
-      itemId: demoItemId,
-      requesterId: 'HS002',
-      requesterName: 'Lê Hoàng Nam',
-      requesterClass: '8/2',
-      reason: 'Em học buổi Chiều, rất cần sách Toán 7 để ôn thi học kỳ 2.',
-      availableSlots: ['T4_AM', 'T5_AM'],
-      inputMethod: 'website',
-      status: 'selected',
-      lotteryRank: 1,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-
-    const demoAppointment = {
-      id: demoAptId,
-      itemId: demoItemId,
-      requestId: demoReqId,
-      donorId: 'HS001',
-      requesterId: 'HS002',
-      type: 'temporary_storage',
-      donorSlot: 'T2_PM',
-      requesterSlot: 'T4_AM',
-      storageSlot: 'K1-A1',
-      pickupCode: pickupCode,
-      status: 'donor_arrived',
-      donorArrivedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      pickedUpAt: null,
-      notes: 'Kịch bản KHKT: An (Sáng) gửi Chiều T2 -> Nam (Chiều) lấy Sáng T4. Lưu tạm 2 ngày tại kệ K1-A1.',
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-
-    // Cập nhật state
-    setItems(prev => [demoItem, ...prev.filter(i => i.id !== demoItemId)]);
-    setRequests(prev => [demoRequest, ...prev.filter(r => r.id !== demoReqId)]);
-    setAppointments(prev => [demoAppointment, ...prev.filter(a => a.id !== demoAptId)]);
-
-    // Thử đồng bộ Cloud
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('items').upsert([mapItemToDb(demoItem)]);
-        await supabase.from('requests').upsert([mapRequestToDb(demoRequest)]);
-        await supabase.from('appointments').upsert([mapAppointmentToDb(demoAppointment)]);
-      } catch (e) {
-        console.warn('Sync demo scenario to cloud:', e);
-      }
-    }
-
-    notifyOtherTabs('STATE_UPDATED');
-    addLog('KỊCH BẢN KHKT', 'Khởi tạo kịch bản trình diễn KHKT: Sách Toán 7 lệch ca 2 ngày (K1-A1, Mã LOOP-2026)');
-    showNotification('🎯 Đã khởi tạo kịch bản KHKT: Lệch ca 2 ngày được xếp vào kệ K1-A1! Mã nhận: LOOP-2026. Hãy chuyển vai TR01 để bàn giao 1 chạm.', 'success');
   };
 
   // Tạo thông báo mới (Đồng bộ Cloud và Local)
@@ -645,7 +426,7 @@ export const AppProvider = ({ children }) => {
     setNotifications(prev => [newNotif, ...prev]);
 
     // Nếu người nhận đang đăng nhập trên thiết bị này, hiển thị thông báo popup ngay lập tức!
-    if (recipientId === currentUser.id) {
+    if (currentUser && recipientId === currentUser.id) {
       showNotification(`🔔 ${title}: ${message}`, 'info');
     }
 
@@ -653,7 +434,7 @@ export const AppProvider = ({ children }) => {
       try {
         const { error } = await supabase.from('notifications').insert([mapNotificationToDb(newNotif)]);
         if (error) {
-          console.warn('Supabase notifications insert error (bảng notifications có thể chưa được tạo qua migration):', error.message);
+          console.warn('Supabase notifications insert error:', error.message);
         }
       } catch (e) {
         console.warn('Notifications insert exception:', e);
@@ -674,6 +455,7 @@ export const AppProvider = ({ children }) => {
   };
 
   const markAllNotificationsAsRead = async () => {
+    if (!currentUser) return;
     setNotifications(prev => prev.map(n => n.recipientId === currentUser.id ? { ...n, isRead: true } : n));
     if (isSupabaseConfigured && supabase) {
       try {
@@ -971,64 +753,14 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Nút chuyển nhanh tài khoản mẫu (HS001, HS002, TR01, GV01) - Phiên thực tế Supabase Auth
-  const switchRole = async (userId) => {
-    const target = USERS.find(u => u.id === userId);
-    if (!target) return;
-
-    if (isSupabaseConfigured && supabase) {
-      const email = `${userId.toLowerCase()}@leloiloop.edu.vn`;
-      const password = 'LeLoi@2026';
-
-      try {
-        // Thử đăng nhập phiên thực tế trên Supabase Auth
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (!error && data?.session?.user) {
-          setAuthUser(data.session.user);
-          const resolved = await resolveUserProfile(data.session.user);
-          if (resolved) setCurrentUser(resolved);
-          showNotification(`Đã kết nối phiên Supabase Auth thật cho ${target.name} (${userId})!`, 'success');
-          addLog('CHUYỂN ĐỔI VAI TRÒ AUTH', `Người dùng chuyển sang phiên thật ${target.name} (${userId})`);
-          return;
-        }
-
-        // Nếu tài khoản mẫu chưa được tạo trên Cloud, tự động đăng ký và kết nối phiên
-        if (error && (error.message.includes('Invalid login credentials') || error.message.includes('User not found'))) {
-          const { data: upData, error: upError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                student_code: target.id,
-                full_name: target.name,
-                class_name: target.class,
-                study_shift: target.shift,
-                role: target.role
-              }
-            }
-          });
-          if (!upError && upData?.session?.user) {
-            setAuthUser(upData.session.user);
-            const resolved = await resolveUserProfile(upData.session.user);
-            if (resolved) setCurrentUser(resolved);
-            showNotification(`Đã tự động khởi tạo & đăng nhập phiên Supabase Auth cho ${target.name} (${userId})!`, 'success');
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Lỗi switchRole Supabase Auth:', err.message);
-      }
+  // Đăng món đồ mới (HS) - Yêu cầu xác thực tài khoản thật
+  const addItem = async (itemData) => {
+    if (!currentUser) {
+      showNotification('Vui lòng đăng nhập tài khoản học sinh để đăng món đồ!', 'warning');
+      openAuthModal('login');
+      return null;
     }
 
-    // Fallback an toàn nếu offline hoặc Supabase chưa cấu hình
-    setCurrentUser(target);
-    localStorage.setItem(KEYS.USER, JSON.stringify(target));
-    showNotification(`Đã chuyển vai trò: ${target.name} [${target.id}]`, 'info');
-    addLog('CHUYỂN ĐỔI VAI TRÒ', `Người dùng chuyển sang đóng vai ${target.name} (${target.id})`);
-  };
-
-  // Đăng món đồ mới (HS) - Cloud-First: Chỉ cập nhật state sau khi Database xác nhận
-  const addItem = async (itemData) => {
     const newId = genUniqueId('M');
     const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
 
@@ -1036,7 +768,7 @@ export const AppProvider = ({ children }) => {
       id: newId,
       ...itemData,
       donorId: currentUser.id,
-      donorName: `${currentUser.name} (${currentUser.class})`,
+      donorName: `${currentUser.name} (${currentUser.class || ''})`,
       status: 'pending',
       requestStatus: 'closed',
       createdAt: now,
@@ -1161,8 +893,14 @@ export const AppProvider = ({ children }) => {
     showNotification(`Đã gửi yêu cầu bổ sung cho món ${itemId}.`, 'warning');
   };
 
-  // Gửi yêu cầu nhận đồ (HS) - Cloud-First: Chống duplicate & Kiểm tra DB trước
+  // Gửi yêu cầu nhận đồ (HS) - Yêu cầu xác thực tài khoản thật
   const addRequest = async (itemId, reason, availableSlots, inputMethod = 'website') => {
+    if (!currentUser) {
+      showNotification('Vui lòng đăng nhập tài khoản học sinh để gửi yêu cầu nhận!', 'warning');
+      openAuthModal('login');
+      return null;
+    }
+
     const itm = items.find(i => i.id === itemId);
     if (itm && itm.donorId === currentUser.id) {
       showNotification('Bạn không thể gửi yêu cầu nhận món đồ do chính mình đăng!', 'warning');
@@ -1860,9 +1598,6 @@ export const AppProvider = ({ children }) => {
         signInWithStudentCodeOrEmail,
         checkStudentCodeAvailable,
         signOut,
-        switchRole,
-        resetToSeedData,
-        uploadSeedToSupabase,
         isSupabaseConfigured,
         dbConnected,
         isSyncing,
@@ -1896,8 +1631,6 @@ export const AppProvider = ({ children }) => {
         cancelAppointment,
         inspectAndReceiveItem,
         completeHandover,
-        runDemoScenario,
-        quickResetDemo,
         addLog,
         notification,
         showNotification

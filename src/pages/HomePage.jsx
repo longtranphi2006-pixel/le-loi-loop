@@ -28,11 +28,19 @@ const iconMap = {
 };
 
 export default function HomePage({ setActivePage, setSelectedCategory, setSelectedItem }) {
-  const { items, currentUser } = useApp();
+  const { items, requests, appointments } = useApp();
 
   const featuredItems = items
     .filter(i => i.status === 'approved' && i.requestStatus === 'open')
     .slice(0, 4);
+
+  const totalItemsCount = items.length;
+  const completedCount = items.filter(i => i.status === 'completed').length;
+  const activeParticipantsCount = new Set([
+    ...items.map(i => i.donorId),
+    ...requests.map(r => r.requesterId)
+  ].filter(Boolean)).size;
+  const storedCount = items.filter(i => i.status === 'stored').length;
 
   return (
     <div className="space-y-12 pb-16">
@@ -84,36 +92,37 @@ export default function HomePage({ setActivePage, setSelectedCategory, setSelect
         <div className="absolute -right-12 -top-12 w-72 h-72 bg-amber-400/15 rounded-full blur-2xl pointer-events-none" />
       </section>
 
-      {/* STATS COUNTER (Ghi rõ số liệu mô phỏng KHKT) */}
-      <section className="bg-white border border-emerald-100 rounded-2xl p-6 shadow-sm">
+      {/* STATS COUNTER THỜI GIAN THỰC TỪ SUPABASE */}
+      <section className="bg-white border border-emerald-100 rounded-3xl p-6 shadow-sm">
         <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-6">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <h2 className="text-sm font-bold uppercase tracking-wider text-gray-700">
-              Chỉ số vận hành hệ thống
+              Chỉ số vận hành hệ thống thực tế
             </h2>
           </div>
-          <span className="text-xs bg-amber-100 text-amber-800 font-medium px-2.5 py-1 rounded-md border border-amber-200">
-            Số liệu mô phỏng thực nghiệm KHKT
+          <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+            Dữ liệu trực tiếp (THCS Lê Lợi)
           </span>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-100 text-center">
-            <div className="text-3xl sm:text-4xl font-extrabold text-emerald-700">128</div>
+          <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100 text-center">
+            <div className="text-3xl sm:text-4xl font-extrabold text-emerald-800">{totalItemsCount}</div>
             <div className="text-xs text-gray-600 font-medium mt-1">Món đồ đã đăng tải</div>
           </div>
-          <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-100 text-center">
-            <div className="text-3xl sm:text-4xl font-extrabold text-amber-700">96</div>
-            <div className="text-xs text-gray-600 font-medium mt-1">Món đã trao thành công</div>
+          <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-100 text-center">
+            <div className="text-3xl sm:text-4xl font-extrabold text-amber-700">{completedCount}</div>
+            <div className="text-xs text-gray-600 font-medium mt-1">Lượt trao nhận hoàn tất</div>
           </div>
-          <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-100 text-center">
-            <div className="text-3xl sm:text-4xl font-extrabold text-blue-700">74</div>
-            <div className="text-xs text-gray-600 font-medium mt-1">Học sinh tích cực tham gia</div>
+          <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-100 text-center">
+            <div className="text-3xl sm:text-4xl font-extrabold text-blue-700">{activeParticipantsCount}</div>
+            <div className="text-xs text-gray-600 font-medium mt-1">Học sinh đã tham gia</div>
           </div>
-          <div className="p-4 rounded-xl bg-teal-50/60 border border-teal-100 text-center">
-            <div className="text-3xl sm:text-4xl font-extrabold text-teal-700">1 Trạm</div>
-            <div className="text-xs text-gray-600 font-medium mt-1">Kệ lưu trữ 10 ô K1-A1..B5</div>
+          <div className="p-4 rounded-2xl bg-teal-50/60 border border-teal-100 text-center">
+            <div className="text-3xl sm:text-4xl font-extrabold text-teal-700">10 Ô Kệ</div>
+            <div className="text-xs text-gray-600 font-medium mt-1">Trạm K1 ({storedCount} ô đang lưu)</div>
           </div>
         </div>
       </section>

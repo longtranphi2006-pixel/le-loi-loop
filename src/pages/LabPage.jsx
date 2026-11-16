@@ -195,7 +195,7 @@ export default function LabPage() {
           </div>
           <div>
             <h2 className="text-base font-bold text-gray-900">
-              Bộ công cụ Kiểm định Mô phỏng (Benchmark Suite)
+              Bộ công cụ Kiểm định Hiệu năng & Kịch bản Biên (Benchmark Suite)
             </h2>
             <p className="text-xs text-gray-500">
               Kiểm tra tính chính xác của thuật toán qua 4 kịch bản biên thực tế tại trường

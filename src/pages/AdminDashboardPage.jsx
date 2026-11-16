@@ -45,6 +45,10 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
     completeHandover
   } = useApp();
 
+  if (!currentUser) {
+    return null;
+  }
+
   const [adminTab, setAdminTab] = useState('tabA'); // 'tabA' | 'tabB' | 'tabC' | 'tabD' | 'tabE' | 'tabF'
 
   // State cho Tab A: Từ chối / Bổ sung modal
@@ -80,11 +84,6 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
   // Tab D: Các appointments đang chờ gửi đồ / kiểm tra tại trạm
   const appointmentsToInspect = appointments.filter(
     a => a.status === 'scheduled' || a.status === 'donor_arrived'
-  );
-
-  // Tab E: Các appointments sẵn sàng bàn giao đồ (Mô phỏng Quét QR nhanh 1 chạm)
-  const pendingHandovers = appointments.filter(
-    a => a.status !== 'completed' && a.status !== 'cancelled' && a.pickupCode
   );
 
   return (
@@ -810,45 +809,6 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
                   Xác thực & Bàn giao
                 </button>
               </div>
-
-              {/* Mô phỏng Quét QR Nhanh 1 Chạm cho Giám khảo KHKT */}
-              {pendingHandovers.length > 0 && (
-                <div className="pt-2">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-bold text-emerald-950 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-emerald-700" />
-                      <span>Mô phỏng Quét QR 1 Chạm (Dành cho Giám khảo KHKT Demo):</span>
-                    </span>
-                    <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
-                      {pendingHandovers.length} mã chờ lấy
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {pendingHandovers.slice(0, 4).map(apt => {
-                      const item = items.find(i => i.id === apt.itemId);
-                      return (
-                        <button
-                          key={apt.id}
-                          type="button"
-                          onClick={async () => {
-                            setHandoverCode(apt.pickupCode);
-                            const res = await completeHandover(apt.pickupCode);
-                            setHandoverResult(res);
-                          }}
-                          className="flex items-center gap-1.5 bg-white hover:bg-emerald-600 text-gray-800 hover:text-white px-3 py-1.5 rounded-xl border border-emerald-300 text-xs font-mono font-bold transition-all shadow-sm group active:scale-95"
-                          title="Bấm để mô phỏng quét QR 1 chạm ngay lập tức"
-                        >
-                          <QrCode className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white" />
-                          <span>⚡ {apt.pickupCode}</span>
-                          <span className="text-[10px] font-sans opacity-70">
-                            ({item?.title?.slice(0, 15) || apt.itemId}...)
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Kết quả bàn giao */}

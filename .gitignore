@@ -29,3 +29,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# QA Evidence images
+qa_tests/evidence/
