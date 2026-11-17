@@ -181,15 +181,15 @@ export const mapAppointmentToDb = (apt) => ({
   request_id: apt.requestId,
   donor_id: apt.donorId,
   requester_id: apt.requesterId,
-  type: apt.type,
-  donor_slot: apt.donorSlot,
-  requester_slot: apt.requesterSlot,
-  storage_slot: apt.storageSlot,
+  type: apt.type || 'station',
+  donor_slot: apt.donorSlot || 'T2_AM',
+  requester_slot: apt.requesterSlot || 'T2_PM',
+  storage_slot: apt.storageSlot || null,
   pickup_code: apt.pickupCode,
-  status: apt.status,
-  donor_arrived_at: apt.donorArrivedAt,
-  picked_up_at: apt.pickedUpAt,
-  notes: apt.notes
+  status: apt.status || 'scheduled',
+  donor_arrived_at: apt.donorArrivedAt || null,
+  picked_up_at: apt.pickedUpAt || null,
+  notes: apt.notes || ''
 });
 
 export const mapLogFromDb = (row) => ({
