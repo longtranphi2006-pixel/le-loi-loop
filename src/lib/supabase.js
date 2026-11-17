@@ -220,6 +220,7 @@ export const mapNotificationFromDb = (row) => ({
   isRead: row.is_read,
   createdAt: row.created_at ? row.created_at.replace('T', ' ').substring(0, 16) : ''
 });
+export const mapNotifFromDb = mapNotificationFromDb;
 
 export const mapNotificationToDb = (n) => ({
   id: n.id,
@@ -233,4 +234,5 @@ export const mapNotificationToDb = (n) => ({
   request_id: n.requestId,
   is_read: n.isRead
 });
+export const mapNotifToDb = mapNotificationToDb;
 

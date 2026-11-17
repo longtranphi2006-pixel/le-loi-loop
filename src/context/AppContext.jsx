@@ -24,7 +24,9 @@ import {
   mapLogFromDb,
   mapLogToDb,
   mapNotificationFromDb,
-  mapNotificationToDb
+  mapNotificationToDb,
+  mapNotifFromDb,
+  mapNotifToDb
 } from '../lib/supabase';
 
 const STORAGE_KEY_PREFIX = 'LE_LOI_LOOP_V1_';
