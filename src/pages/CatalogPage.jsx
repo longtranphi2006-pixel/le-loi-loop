@@ -1,13 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES } from '../data/seedData';
-import { Search, Filter, Sparkles, BookOpen, Clock, Tag, CheckCircle2, AlertCircle, PlusCircle, Package } from 'lucide-react';
+import { Search, Filter, Sparkles, BookOpen, Clock, Tag, CheckCircle2, AlertCircle, PlusCircle, Package, Trash2, AlertTriangle, X, ShieldCheck, Shield } from 'lucide-react';
 
 export default function CatalogPage({ selectedCategory, setSelectedCategory, setSelectedItem, setActivePage }) {
-  const { items } = useApp();
+  const { items, currentUser, deleteItem, openAuthModal } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCondition, setSelectedCondition] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Phân quyền: Cán bộ Quản lý trạm (station_staff), Giáo viên (teacher) hoặc Admin có quyền xóa món đồ
+  const canDelete = Boolean(currentUser && (currentUser.role === 'station_staff' || currentUser.role === 'teacher' || currentUser.role === 'admin'));
 
   // Lọc danh sách món đồ
   const filteredItems = useMemo(() => {
@@ -63,6 +68,48 @@ export default function CatalogPage({ selectedCategory, setSelectedCategory, set
           Hiện có <strong>{filteredItems.length}</strong> món phù hợp
         </div>
       </div>
+
+      {/* BANNER HƯỚNG DẪN / PHÂN QUYỀN XÓA MÓN ĐỒ */}
+      {canDelete ? (
+        <div className="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-red-950 animate-fadeIn shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-red-200">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold flex items-center gap-2">
+                <span>Chế độ Quản lý Trạm đã kích hoạt</span>
+                <span className="bg-red-200 text-red-900 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  {currentUser.role === 'admin' ? 'Quản trị viên (Admin)' : currentUser.role === 'teacher' ? 'Giáo viên phụ trách' : 'Cán bộ trực trạm'}
+                </span>
+              </div>
+              <p className="text-[11px] text-red-700 mt-0.5">
+                Nút <span className="font-bold text-red-800 bg-red-100 px-1.5 py-0.2 rounded border border-red-300">[Xóa]</span> màu đỏ đã hiển thị nổi bật trên từng món đồ trong kho. Bạn có thể xóa bất kỳ món đồ nào khỏi hệ thống.
+              </p>
+            </div>
+          </div>
+          <div className="text-[11px] font-mono font-semibold bg-white px-3 py-1.5 rounded-xl border border-red-200 shrink-0 self-start sm:self-auto text-gray-700">
+            {currentUser.name} ({currentUser.id})
+          </div>
+        </div>
+      ) : (
+        <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              {currentUser
+                ? `Bạn đang đăng nhập với vai trò Học sinh (${currentUser.name}). Chỉ tài khoản Quản lý trạm/Admin mới thấy nút Xóa món đồ.`
+                : 'Bạn đang xem kho ở chế độ Khách. Để xóa món đồ, vui lòng đăng nhập tài khoản Quản lý trạm / Admin (Ví dụ: admin/admin hoặc TR01).'}
+            </span>
+          </div>
+          <button
+            onClick={() => openAuthModal('login')}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs shrink-0 shadow-sm"
+          >
+            {currentUser ? 'Đổi tài khoản' : 'Đăng nhập Quản lý'}
+          </button>
+        </div>
+      )}
 
       {/* SEARCH & FILTERS BAR */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4">
@@ -227,10 +274,24 @@ export default function CatalogPage({ selectedCategory, setSelectedCategory, set
                     )}
                   </div>
 
-                  <div className="absolute top-2.5 right-2.5 flex gap-1">
+                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
                     <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-mono px-2 py-0.5 rounded">
                       {item.id}
                     </span>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setItemToDelete(item);
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold px-2 py-0.5 rounded-md shadow-md transition-all flex items-center gap-1 hover:scale-105 active:scale-95"
+                        title="Xóa món đồ khỏi kho chung (Chỉ dành cho Quản lý trạm)"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Xóa</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="absolute bottom-2 left-2 flex gap-1">
@@ -265,20 +326,126 @@ export default function CatalogPage({ selectedCategory, setSelectedCategory, set
                       <span>{item.createdAt.split(' ')[0]}</span>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedItem(item);
-                        setActivePage('detail');
-                      }}
-                      className="w-full text-center py-2 px-3 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-600 text-emerald-800 hover:text-white transition-all shadow-sm"
-                    >
-                      Xem chi tiết & Gửi yêu cầu
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedItem(item);
+                          setActivePage('detail');
+                        }}
+                        className="flex-1 text-center py-2 px-3 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-600 text-emerald-800 hover:text-white transition-all shadow-sm"
+                      >
+                        Xem chi tiết & Gửi yêu cầu
+                      </button>
+
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setItemToDelete(item);
+                          }}
+                          className="py-2 px-3 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white transition-all shadow-md shadow-red-200 flex items-center justify-center gap-1.5 shrink-0 hover:scale-105 active:scale-95"
+                          title="Xóa món này khỏi kho chung (Chỉ dành cho Quản lý trạm)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xóa</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA MÓN ĐỒ (CHỈ DÀNH CHO QUẢN LÝ TRẠM & ADMIN) */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-red-100 overflow-hidden relative">
+            {/* Header modal */}
+            <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base leading-tight">Xóa món đồ khỏi kho</h3>
+                  <p className="text-[11px] text-red-100 mt-0.5">Phân quyền: Người quản lý trạm</p>
+                </div>
+              </div>
+              <button
+                disabled={isDeleting}
+                onClick={() => setItemToDelete(null)}
+                className="text-red-200 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Nội dung modal */}
+            <div className="p-5 space-y-4">
+              <div className="flex gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                <img
+                  src={itemToDelete.image}
+                  alt={itemToDelete.title}
+                  className="w-16 h-16 rounded-xl object-cover shrink-0 border border-gray-200"
+                />
+                <div className="text-xs overflow-hidden">
+                  <div className="font-bold text-gray-900 truncate">{itemToDelete.title}</div>
+                  <div className="text-[11px] text-gray-500 font-mono mt-0.5">Mã: {itemToDelete.id}</div>
+                  <div className="text-[11px] text-gray-500">Người tặng: {itemToDelete.donorName || itemToDelete.donorId}</div>
+                  <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Tình trạng: {itemToDelete.condition}</div>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-bold">Cảnh báo từ hệ thống:</div>
+                  <p className="text-[11px] leading-relaxed">
+                    Bạn đang thực hiện xóa món đồ này khỏi kho dùng chung. Dữ liệu trên Supabase Cloud và mọi lịch hẹn, yêu cầu liên quan sẽ bị hủy bỏ vĩnh viễn.
+                  </p>
+                </div>
+              </div>
+
+              {/* Nút hành động */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setItemToDelete(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    await deleteItem(itemToDelete.id);
+                    setIsDeleting(false);
+                    setItemToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all shadow-md shadow-red-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Đang xóa...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Xác nhận xóa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

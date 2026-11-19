@@ -18,7 +18,10 @@ import {
   Warehouse,
   Check,
   Inbox,
-  MessageSquare
+  MessageSquare,
+  Trash2,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 export default function ItemDetailPage({ item, setActivePage }) {
@@ -29,13 +32,19 @@ export default function ItemDetailPage({ item, setActivePage }) {
     acceptRequestByDonor,
     rejectRequestByDonor,
     openAuthModal,
-    showNotification
+    showNotification,
+    deleteItem
   } = useApp();
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [reason, setReason] = useState('');
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [inputMethod, setInputMethod] = useState('website');
   const [generatedTicket, setGeneratedTicket] = useState(null);
+
+  // Phân quyền: Cán bộ Quản lý trạm (station_staff), Giáo viên (teacher) hoặc Admin có quyền xóa món đồ
+  const canDelete = Boolean(currentUser && (currentUser.role === 'station_staff' || currentUser.role === 'teacher' || currentUser.role === 'admin'));
 
   // Tự động gợi ý khung giờ rảnh khi mở modal yêu cầu dựa theo study_shift của người nhận
   useEffect(() => {
@@ -145,14 +154,27 @@ export default function ItemDetailPage({ item, setActivePage }) {
 
   return (
     <div className="space-y-6 pb-20 max-w-5xl mx-auto">
-      {/* Back button */}
-      <button
-        onClick={() => setActivePage('catalog')}
-        className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2 rounded-xl transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Quay lại danh sách kho đồ</span>
-      </button>
+      {/* Top action bar */}
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={() => setActivePage('catalog')}
+          className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2 rounded-xl transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Quay lại danh sách kho đồ</span>
+        </button>
+
+        {canDelete && (
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-white bg-red-50 hover:bg-red-600 border border-red-200 px-3.5 py-2 rounded-xl transition-all shadow-sm"
+            title="Xóa món đồ khỏi kho chung (Chỉ dành cho Quản lý trạm)"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Xóa món đồ</span>
+          </button>
+        )}
+      </div>
 
       {/* Main Detail Card */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden grid grid-cols-1 md:grid-cols-12 gap-0">
@@ -282,6 +304,28 @@ export default function ItemDetailPage({ item, setActivePage }) {
                   <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>{disabledReason}</div>
                 </div>
+              </div>
+            )}
+            {/* BẢNG ĐIỀU KHIỂN QUẢN LÝ TRẠM */}
+            {canDelete && (
+              <div className="p-3.5 bg-red-50/70 border border-red-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-xs text-red-950">
+                  <div className="font-bold flex items-center gap-1.5 text-red-800">
+                    <ShieldCheck className="w-4 h-4 text-red-600" />
+                    <span>Phân quyền Quản lý Trạm (station_staff):</span>
+                  </div>
+                  <p className="text-[11px] text-red-700 mt-0.5">
+                    Gỡ bỏ món đồ này khỏi kho chung nếu phát hiện hỏng hóc, không đạt tiêu chuẩn hoặc bị hủy.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(true)}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Xóa khỏi kho</span>
+                </button>
               </div>
             )}
           </div>
@@ -541,6 +585,98 @@ export default function ItemDetailPage({ item, setActivePage }) {
             setActivePage('my-activity');
           }}
         />
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA MÓN ĐỒ (CHỈ DÀNH CHO QUẢN LÝ TRẠM & ADMIN) */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-red-100 overflow-hidden relative">
+            {/* Header modal */}
+            <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base leading-tight">Xóa món đồ khỏi kho</h3>
+                  <p className="text-[11px] text-red-100 mt-0.5">Phân quyền: Người quản lý trạm</p>
+                </div>
+              </div>
+              <button
+                disabled={isDeleting}
+                onClick={() => setShowDeleteModal(false)}
+                className="text-red-200 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Nội dung modal */}
+            <div className="p-5 space-y-4">
+              <div className="flex gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                <img
+                  src={item.image}
+                  alt={item.title}
+                  className="w-16 h-16 rounded-xl object-cover shrink-0 border border-gray-200"
+                />
+                <div className="text-xs overflow-hidden">
+                  <div className="font-bold text-gray-900 truncate">{item.title}</div>
+                  <div className="text-[11px] text-gray-500 font-mono mt-0.5">Mã: {item.id}</div>
+                  <div className="text-[11px] text-gray-500">Người tặng: {item.donorName || item.donorId}</div>
+                  <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Tình trạng: {item.condition}</div>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-bold">Cảnh báo từ hệ thống:</div>
+                  <p className="text-[11px] leading-relaxed">
+                    Bạn đang thực hiện xóa món đồ này khỏi kho dùng chung. Dữ liệu trên Supabase Cloud và mọi lịch hẹn, yêu cầu liên quan sẽ bị hủy bỏ vĩnh viễn.
+                  </p>
+                </div>
+              </div>
+
+              {/* Nút hành động */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    const res = await deleteItem(item.id);
+                    setIsDeleting(false);
+                    if (res && res.success) {
+                      setShowDeleteModal(false);
+                      setActivePage('catalog');
+                    }
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all shadow-md shadow-red-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Đang xóa...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Xác nhận xóa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

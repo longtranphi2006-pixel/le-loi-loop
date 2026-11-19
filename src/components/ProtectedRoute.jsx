@@ -45,7 +45,7 @@ export default function ProtectedRoute({ allowedRoles, setActivePage, children }
         </div>
         <h2 className="text-xl font-bold text-gray-900">Khu vực Giới hạn Quyền Truy cập</h2>
         <p className="text-sm text-gray-600 leading-relaxed">
-          Bạn đang đăng nhập với vai trò <strong>{currentUser.name}</strong> ({currentUser.role === 'student' ? 'Học sinh' : currentUser.role}).
+          Bạn đang đăng nhập với vai trò <strong>{currentUser.name}</strong> ({currentUser.role === 'student' ? 'Học sinh' : currentUser.role === 'admin' ? 'Quản trị viên' : currentUser.role === 'teacher' ? 'Giáo viên' : 'Trực trạm'}).
           Khu vực Quản trị và Điều phối trạm chỉ dành cho Ban Giám hiệu, Giáo viên phụ trách KHKT và Đội tình nguyện trực trạm Phòng Đội.
         </p>
         <div className="pt-4">

@@ -45,6 +45,18 @@ export const USERS = [
     phone: 'Văn phòng Đoàn Đội / Hội đồng SP',
     points: 250,
     bio: 'Giáo viên hướng dẫn đề tài KHKT "Lê Lợi Loop" – Quản lý, phê duyệt và giám sát hệ thống'
+  },
+  {
+    id: 'ADMIN',
+    name: 'Quản trị viên Hệ thống (Admin)',
+    role: 'admin',
+    class: 'Ban Quản Trị Hệ Thống',
+    shift: 'Toàn thời gian',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+    phone: 'Văn phòng Quản trị KHKT',
+    points: 999,
+    bio: 'Quản trị viên cao cấp – Toàn quyền quản trị hệ thống Lê Lợi Loop',
+    password: 'admin'
   }
 ];
 

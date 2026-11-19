@@ -20,7 +20,11 @@ import {
   Clock,
   ArrowRight,
   Download,
-  BarChart3
+  BarChart3,
+  Trash2,
+  AlertTriangle,
+  X,
+  Package
 } from 'lucide-react';
 
 export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
@@ -35,6 +39,7 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
     approveItem,
     rejectItem,
     requestItemUpdate,
+    deleteItem,
     closeItemRegistration,
     conductLottery,
     selectRecipientManually,
@@ -50,6 +55,9 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
   }
 
   const [adminTab, setAdminTab] = useState('tabA'); // 'tabA' | 'tabB' | 'tabC' | 'tabD' | 'tabE' | 'tabF'
+  const [tabASubTab, setTabASubTab] = useState('approved'); // 'pending' | 'approved'
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // State cho Tab A: Từ chối / Bổ sung modal
   const [rejectModalItem, setRejectModalItem] = useState(null);
@@ -69,6 +77,7 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
 
   // Lọc items cho các tab
   const pendingItems = items.filter(i => i.status === 'pending');
+  const approvedCatalogItems = items.filter(i => i.status === 'approved' || i.status === 'matching' || i.status === 'stored' || i.status === 'completed');
   const itemsNeedingLottery = items.filter(i => {
     const itemReqs = requests.filter(r => r.itemId === i.id);
     return itemReqs.length > 0 && i.status !== 'completed' && i.status !== 'rejected';
@@ -120,10 +129,14 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >
-          <span>A. Duyệt bài đăng</span>
-          {pendingItems.length > 0 && (
+          <span>A. Kho đồ & Duyệt bài</span>
+          {pendingItems.length > 0 ? (
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${adminTab === 'tabA' ? 'bg-white text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-              {pendingItems.length} chờ
+              {pendingItems.length} chờ duyệt
+            </span>
+          ) : (
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${adminTab === 'tabA' ? 'bg-white text-emerald-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              {approvedCatalogItems.length} món kho
             </span>
           )}
         </button>
@@ -201,89 +214,220 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
           <div className="flex items-center justify-between border-b border-gray-100 pb-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900">
-                Tab A: Hàng đợi Phê duyệt bài đăng đồ dùng mới
+                Tab A: Quản lý Kho đồ & Phê duyệt bài đăng mới
               </h2>
               <p className="text-xs text-gray-500">
-                Kiểm tra thông tin sách vở, đồ dùng có phù hợp với lứa tuổi THCS trước khi công khai lên Kho đồ
+                Kiểm duyệt bài đăng mới hoặc quản lý / xóa bỏ các món đồ đã được duyệt lên kho chung
               </p>
             </div>
-            <span className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded-full">
-              {pendingItems.length} món đang chờ duyệt
-            </span>
           </div>
 
-          {pendingItems.length === 0 ? (
-            <div className="text-center py-12 text-xs text-gray-500 space-y-2">
-              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-              <div className="font-bold text-gray-700 text-sm">Tuyệt vời! Không còn bài đăng nào chờ duyệt</div>
-              <p>Mọi món đồ học sinh đăng lên đều đã được xử lý đầy đủ.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pendingItems.map(item => (
-                <div
-                  key={item.id}
-                  className="p-5 rounded-2xl border-2 border-amber-200 bg-amber-50/30 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5"
-                >
-                  <div className="flex items-start gap-4">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="w-20 h-20 rounded-xl object-cover ring-1 ring-amber-300 shrink-0"
-                    />
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-gray-900">{item.title}</span>
-                        <span className="font-mono text-xs bg-black/70 text-white px-2 py-0.2 rounded">
-                          {item.id}
-                        </span>
-                        <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded">
-                          {item.inputMethod === 'website' ? 'Web Online' : 'Phiếu giấy'}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        Danh mục: <strong>{CATEGORIES.find(c => c.id === item.category)?.name}</strong> • Tình trạng: <strong>{item.condition}</strong>
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        Người gửi: <strong>{item.donorName}</strong> ({item.donorId}) • Đăng: {item.createdAt}
-                      </div>
-                      <p className="text-xs text-gray-700 italic bg-white p-2 rounded-lg border border-amber-200 mt-1">
-                        "{item.description}"
-                      </p>
-                    </div>
-                  </div>
+          {/* SUB-TABS TRONG TAB A */}
+          <div className="flex border-b border-gray-200 gap-2">
+            <button
+              type="button"
+              onClick={() => setTabASubTab('pending')}
+              className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                tabASubTab === 'pending'
+                  ? 'border-emerald-600 text-emerald-800'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <span>Hàng đợi chờ duyệt</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                tabASubTab === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {pendingItems.length}
+              </span>
+            </button>
 
-                  {/* Hành động duyệt */}
-                  <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
-                    <button
-                      onClick={() => approveItem(item.id)}
-                      className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-600/20"
+            <button
+              type="button"
+              onClick={() => setTabASubTab('approved')}
+              className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
+                tabASubTab === 'approved'
+                  ? 'border-emerald-600 text-emerald-800'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <Package className="w-4 h-4 text-emerald-600" />
+              <span>Món đã duyệt lên kho chung (Quản lý & Xóa)</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                tabASubTab === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {approvedCatalogItems.length}
+              </span>
+            </button>
+          </div>
+
+          {/* 1. NỘI DUNG SUB-TAB HÀNG ĐỢI CHỜ DUYỆT */}
+          {tabASubTab === 'pending' && (
+            <>
+              {pendingItems.length === 0 ? (
+                <div className="text-center py-12 text-xs text-gray-500 space-y-2">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                  <div className="font-bold text-gray-700 text-sm">Tuyệt vời! Không còn bài đăng nào chờ duyệt</div>
+                  <p>Mọi món đồ học sinh đăng lên đều đã được xử lý đầy đủ.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pendingItems.map(item => (
+                    <div
+                      key={item.id}
+                      className="p-5 rounded-2xl border-2 border-amber-200 bg-amber-50/30 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5"
                     >
-                      <Check className="w-4 h-4" />
-                      <span>Phê duyệt</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setUpdateModalItem(item);
-                        setUpdateNoteText('');
-                      }}
-                      className="flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold px-3 py-2.5 rounded-xl"
-                    >
-                      <span>Yêu cầu bổ sung</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setRejectModalItem(item);
-                        setRejectReasonText('');
-                      }}
-                      className="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-800 text-xs font-bold px-3 py-2.5 rounded-xl"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      <span>Từ chối</span>
-                    </button>
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="w-20 h-20 rounded-xl object-cover ring-1 ring-amber-300 shrink-0"
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-gray-900">{item.title}</span>
+                            <span className="font-mono text-xs bg-black/70 text-white px-2 py-0.2 rounded">
+                              {item.id}
+                            </span>
+                            <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded">
+                              {item.inputMethod === 'website' ? 'Web Online' : 'Phiếu giấy'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            Danh mục: <strong>{CATEGORIES.find(c => c.id === item.category)?.name}</strong> • Tình trạng: <strong>{item.condition}</strong>
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Người gửi: <strong>{item.donorName}</strong> ({item.donorId}) • Đăng: {item.createdAt}
+                          </div>
+                          <p className="text-xs text-gray-700 italic bg-white p-2 rounded-lg border border-amber-200 mt-1">
+                            "{item.description}"
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Hành động duyệt */}
+                      <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
+                        <button
+                          onClick={() => approveItem(item.id)}
+                          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-600/20"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>Phê duyệt</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setUpdateModalItem(item);
+                            setUpdateNoteText('');
+                          }}
+                          className="flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold px-3 py-2.5 rounded-xl"
+                        >
+                          <span>Yêu cầu bổ sung</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRejectModalItem(item);
+                            setRejectReasonText('');
+                          }}
+                          className="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-800 text-xs font-bold px-3 py-2.5 rounded-xl"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>Từ chối</span>
+                        </button>
+                        <button
+                          onClick={() => setItemToDelete(item)}
+                          className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-2.5 rounded-xl transition-all shadow-sm"
+                          title="Xóa vĩnh viễn bài đăng này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Xóa</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 2. NỘI DUNG SUB-TAB MÓN ĐỒ ĐÃ DUYỆT LÊN KHO CHUNG (TÍNH NĂNG QUẢN LÝ & XÓA) */}
+          {tabASubTab === 'approved' && (
+            <div className="space-y-4">
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-950">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-emerald-700 shrink-0" />
+                  <div>
+                    <span className="font-bold">Danh sách món đồ đã duyệt lên kho chung ({approvedCatalogItems.length} món):</span>
+                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                      Cán bộ Trực trạm / Giáo viên có quyền gỡ bỏ hoặc xóa vĩnh viễn bất kỳ món đồ nào khỏi hệ thống nếu không còn phù hợp.
+                    </p>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {approvedCatalogItems.length === 0 ? (
+                <div className="text-center py-12 text-xs text-gray-500">
+                  Chưa có món đồ nào được phê duyệt trên kho.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {approvedCatalogItems.map(item => {
+                    const reqCount = requests.filter(r => r.itemId === item.id).length;
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-4 rounded-2xl border border-gray-200 bg-white hover:border-emerald-300 transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm"
+                      >
+                        <div className="flex items-start gap-4">
+                          <img
+                            src={item.image}
+                            alt={item.title}
+                            className="w-16 h-16 rounded-xl object-cover ring-1 ring-gray-200 shrink-0"
+                          />
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-gray-900">{item.title}</span>
+                              <span className="font-mono text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                                {item.id}
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                item.status === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                                item.status === 'matching' ? 'bg-blue-100 text-blue-800' :
+                                item.status === 'stored' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-700'
+                              }`}>
+                                {item.status === 'approved' ? 'Công khai trên kho' :
+                                 item.status === 'matching' ? 'Đang điều phối' :
+                                 item.status === 'stored' ? `Đang lưu ô ${item.storageSlot}` : 'Đã bàn giao'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Danh mục: <strong>{CATEGORIES.find(c => c.id === item.category)?.name}</strong> • Tình trạng: <strong>{item.condition}</strong> • Người đăng: <strong>{item.donorName}</strong> ({item.donorId}) • <span className="text-emerald-700 font-semibold">{reqCount} bạn xin nhận</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
+                          <button
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setActivePage('detail');
+                            }}
+                            className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2.5 rounded-xl transition-colors"
+                          >
+                            Xem chi tiết
+                          </button>
+                          <button
+                            onClick={() => setItemToDelete(item)}
+                            className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-red-200 transition-all hover:scale-105 active:scale-95"
+                            title="Xóa món đồ này khỏi kho chung"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Xóa món đồ</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -946,6 +1090,92 @@ export default function AdminDashboardPage({ setActivePage, setSelectedItem }) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA MÓN ĐỒ (DÀNH CHO QUẢN LÝ TRẠM / ADMIN) */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-red-100 overflow-hidden relative">
+            <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base leading-tight">Xóa món đồ khỏi kho</h3>
+                  <p className="text-[11px] text-red-100 mt-0.5">Phân quyền: Quản lý trạm / Admin</p>
+                </div>
+              </div>
+              <button
+                disabled={isDeleting}
+                onClick={() => setItemToDelete(null)}
+                className="text-red-200 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                <img
+                  src={itemToDelete.image}
+                  alt={itemToDelete.title}
+                  className="w-16 h-16 rounded-xl object-cover shrink-0 border border-gray-200"
+                />
+                <div className="text-xs overflow-hidden">
+                  <div className="font-bold text-gray-900 truncate">{itemToDelete.title}</div>
+                  <div className="text-[11px] text-gray-500 font-mono mt-0.5">Mã: {itemToDelete.id}</div>
+                  <div className="text-[11px] text-gray-500">Người tặng: {itemToDelete.donorName || itemToDelete.donorId}</div>
+                  <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Tình trạng: {itemToDelete.condition}</div>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-bold">Cảnh báo hệ thống:</div>
+                  <p className="text-[11px] leading-relaxed">
+                    Bạn đang thực hiện xóa vĩnh viễn món đồ này khỏi kho dùng chung. Dữ liệu trên Supabase Cloud và mọi lịch hẹn, yêu cầu liên quan sẽ bị hủy bỏ vĩnh viễn.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setItemToDelete(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    await deleteItem(itemToDelete.id);
+                    setIsDeleting(false);
+                    setItemToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-all shadow-md shadow-red-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Đang xóa...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Xác nhận xóa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -287,11 +287,13 @@ export default function Navbar({ activePage, setActivePage }) {
                     <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5 leading-tight">
                       <span className="truncate max-w-[130px]">{currentUser.name}</span>
                       <span className="text-[10px] bg-emerald-200 text-emerald-900 font-black px-1.5 py-0.2 rounded">
-                        {currentUser.role === 'teacher' ? 'GV' : currentUser.role === 'station_staff' ? 'Trực trạm' : currentUser.class ? `${currentUser.class}` : 'HS'}
+                        {currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'teacher' ? 'GV' : currentUser.role === 'station_staff' ? 'Trực trạm' : currentUser.class ? `${currentUser.class}` : 'HS'}
                       </span>
                     </div>
                     <div className="text-[10px] text-emerald-700 font-medium">
-                      {currentUser.role === 'teacher'
+                      {currentUser.role === 'admin'
+                        ? 'Quản trị viên Hệ thống'
+                        : currentUser.role === 'teacher'
                         ? 'Giáo viên phụ trách'
                         : currentUser.role === 'station_staff'
                         ? 'Đội tình nguyện Phòng Đội'
@@ -312,7 +314,7 @@ export default function Navbar({ activePage, setActivePage }) {
                         {currentUser.class && ` • Lớp ${currentUser.class}`}
                       </div>
                       <div className="text-[10px] text-emerald-700 font-bold mt-1">
-                        Vai trò: {currentUser.role === 'teacher' ? 'Giáo viên quản trị' : currentUser.role === 'station_staff' ? 'Cán bộ trực trạm' : 'Học sinh'}
+                        Vai trò: {currentUser.role === 'admin' ? 'Quản trị viên cấp cao (Admin)' : currentUser.role === 'teacher' ? 'Giáo viên quản trị' : currentUser.role === 'station_staff' ? 'Cán bộ trực trạm' : 'Học sinh'}
                       </div>
                     </div>
 
@@ -410,11 +412,13 @@ export default function Navbar({ activePage, setActivePage }) {
                   <div className="text-xs font-bold text-gray-900 flex items-center gap-1">
                     <span>{currentUser.name}</span>
                     <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1 rounded font-bold">
-                      {currentUser.role === 'teacher' ? 'GV' : currentUser.role === 'station_staff' ? 'Trực trạm' : currentUser.class || 'HS'}
+                      {currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'teacher' ? 'GV' : currentUser.role === 'station_staff' ? 'Trực trạm' : currentUser.class || 'HS'}
                     </span>
                   </div>
                   <div className="text-[10px] text-emerald-700 font-semibold">
-                    {currentUser.role === 'teacher'
+                    {currentUser.role === 'admin'
+                      ? 'Quản trị viên Hệ thống'
+                      : currentUser.role === 'teacher'
                       ? 'Giáo viên phụ trách'
                       : currentUser.role === 'station_staff'
                       ? 'Đội trực trạm'
