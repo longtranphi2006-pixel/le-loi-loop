@@ -640,17 +640,36 @@ export const AppProvider = ({ children }) => {
     const cleanName = (fullName || '').trim();
 
     if (!cleanCode || cleanCode.length < 3) {
-      return { success: false, error: 'Mã học sinh / Tên đăng nhập phải có ít nhất 3 ký tự.' };
+      return {
+        success: false,
+        error: role === 'teacher'
+          ? 'Mã giáo viên / Tên đăng nhập phải có ít nhất 3 ký tự.'
+          : role === 'station_staff'
+          ? 'Mã trực trạm / Tên đăng nhập phải có ít nhất 3 ký tự.'
+          : 'Mã học sinh / Tên đăng nhập phải có ít nhất 3 ký tự.'
+      };
     }
     if (!cleanName || cleanName.length < 3) {
-      return { success: false, error: 'Họ và tên phải có ít nhất 3 ký tự.' };
+      return {
+        success: false,
+        error: role === 'teacher'
+          ? 'Họ và tên giáo viên phải có ít nhất 3 ký tự.'
+          : role === 'station_staff'
+          ? 'Họ tên cán bộ / Đội trực phải có ít nhất 3 ký tự.'
+          : 'Họ và tên học sinh phải có ít nhất 3 ký tự.'
+      };
     }
     if (role !== 'student' && schoolCode !== 'LELOI2026') {
-      return { success: false, error: 'Mã xác thực nội bộ trường không chính xác! Vui lòng kiểm tra lại.' };
+      return { success: false, error: 'Mã xác thực nội bộ trường không chính xác! Vui lòng liên hệ BGH hoặc Ban dự án (Mã chuẩn: LELOI2026).' };
     }
     if (!password || password.length < 6) {
       return { success: false, error: 'Mật khẩu phải có tối thiểu 6 ký tự.' };
     }
+
+    const defaultClass = role === 'teacher' ? 'Tổ Giáo viên' : role === 'station_staff' ? 'Đội Trực Trạm' : '7/1';
+    const defaultShift = role === 'teacher' ? 'Toàn thời gian' : role === 'station_staff' ? 'Cả ngày' : 'Sáng';
+    const finalClass = (className || '').trim() || defaultClass;
+    const finalShift = (studyShift || '').trim() || defaultShift;
 
     const email = `${cleanCode.toLowerCase()}@leloiloop.edu.vn`;
 
@@ -659,15 +678,16 @@ export const AppProvider = ({ children }) => {
         id: cleanCode,
         name: cleanName,
         role: role,
-        class: className || '7/1',
-        shift: studyShift || 'Sáng',
+        class: finalClass,
+        shift: finalShift,
         avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
         phone: phone || '',
         points: 0
       };
       setCurrentUser(newProfile);
       localStorage.setItem(KEYS.USER, JSON.stringify(newProfile));
-      showNotification(`Đăng ký thành công tài khoản [${cleanCode}] ${cleanName}!`, 'success');
+      const greeting = role === 'teacher' ? `Kính chào Thầy/Cô ${cleanName}!` : role === 'station_staff' ? `Chào mừng cán bộ trực trạm ${cleanName}!` : `Chào mừng bạn ${cleanName}!`;
+      showNotification(`${greeting} Đã đăng ký thành công tài khoản [${cleanCode}]!`, 'success');
       return { success: true, user: newProfile };
     }
 
@@ -686,8 +706,8 @@ export const AppProvider = ({ children }) => {
           data: {
             student_code: cleanCode,
             full_name: cleanName,
-            class_name: className || (role === 'teacher' ? 'Hội đồng KHKT' : 'Đội Tình Nguyện'),
-            study_shift: studyShift || 'Sáng',
+            class_name: finalClass,
+            study_shift: finalShift,
             role: role || 'student',
             phone_or_contact: phone || null
           }
@@ -696,7 +716,7 @@ export const AppProvider = ({ children }) => {
 
       if (error) {
         if (error.message.includes('User already registered') || error.message.includes('already exists')) {
-          return { success: false, error: `Mã học sinh ${cleanCode} đã được đăng ký. Vui lòng chuyển sang tab Đăng nhập!` };
+          return { success: false, error: `Mã tài khoản ${cleanCode} đã được đăng ký. Vui lòng chuyển sang tab Đăng nhập!` };
         }
 
         // Tự động bảo vệ & dự phòng khi gặp lỗi xác thực tên miền ảo (@leloiloop.edu.vn) hoặc rate limit Supabase
@@ -706,8 +726,8 @@ export const AppProvider = ({ children }) => {
             id: cleanCode,
             name: cleanName,
             role: role,
-            class: className || '7/1',
-            shift: studyShift || 'Sáng',
+            class: finalClass,
+            shift: finalShift,
             avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
             phone: phone || '',
             points: 0,
@@ -720,8 +740,8 @@ export const AppProvider = ({ children }) => {
                 id: cleanCode,
                 name: cleanName,
                 role: role,
-                class: className || '7/1',
-                shift: studyShift || 'Sáng',
+                class: finalClass,
+                shift: finalShift,
                 phone: phone || '',
                 password
               });
@@ -746,13 +766,14 @@ export const AppProvider = ({ children }) => {
             user_metadata: {
               student_code: cleanCode,
               full_name: cleanName,
-              class_name: className,
-              study_shift: studyShift,
+              class_name: finalClass,
+              study_shift: finalShift,
               role
             }
           });
 
-          showNotification(`🎉 Chúc mừng bạn ${cleanName} đã đăng ký tài khoản thành công!`, 'success');
+          const greeting = role === 'teacher' ? `Kính chào Thầy/Cô ${cleanName}!` : role === 'station_staff' ? `Chào mừng cán bộ trực trạm ${cleanName}!` : `Chào mừng bạn ${cleanName}!`;
+          showNotification(`🎉 ${greeting} Đăng ký tài khoản thành công!`, 'success');
           addLog('ĐĂNG KÝ TÀI KHOẢN', `Người dùng mới đăng ký thành công: ${cleanName} (${cleanCode}) - Vai trò: ${role}`);
           return { success: true, user: newProfile };
         }
@@ -778,8 +799,8 @@ export const AppProvider = ({ children }) => {
             id: activeUser.id,
             student_code: cleanCode,
             full_name: cleanName,
-            class_name: className || '7/1',
-            study_shift: studyShift || 'Sáng',
+            class_name: finalClass,
+            study_shift: finalShift,
             role: role || 'student',
             phone_or_contact: phone || null
           });
@@ -787,8 +808,8 @@ export const AppProvider = ({ children }) => {
             id: cleanCode,
             name: cleanName,
             role: role,
-            class: className || '7/1',
-            shift: studyShift || 'Sáng'
+            class: finalClass,
+            shift: finalShift
           });
         } catch (dbErr) {
           console.warn('Upsert fallback profile:', dbErr.message);
@@ -806,8 +827,8 @@ export const AppProvider = ({ children }) => {
           id: cleanCode,
           name: cleanName,
           role: role,
-          class: className || '7/1',
-          shift: studyShift || 'Sáng',
+          class: finalClass,
+          shift: finalShift,
           avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
           phone: phone || '',
           points: 0,
@@ -820,7 +841,8 @@ export const AppProvider = ({ children }) => {
         console.error(e);
       }
 
-      showNotification(`🎉 Chúc mừng bạn ${cleanName} đã đăng ký tài khoản thành công!`, 'success');
+      const greeting = role === 'teacher' ? `Kính chào Thầy/Cô ${cleanName}!` : role === 'station_staff' ? `Chào mừng cán bộ trực trạm ${cleanName}!` : `Chào mừng bạn ${cleanName}!`;
+      showNotification(`🎉 ${greeting} Đã đăng ký tài khoản thành công!`, 'success');
       addLog('ĐĂNG KÝ TÀI KHOẢN', `Người dùng mới đăng ký thành công: ${cleanName} (${cleanCode}) - Vai trò: ${role}`);
       return { success: true, user: activeUser };
     } catch (err) {

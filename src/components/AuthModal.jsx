@@ -60,6 +60,22 @@ export default function AuthModal({ isOpen, onClose }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
 
+  // Chuyển đổi vai trò và đồng bộ các trường tương ứng phù hợp thực tế trường học
+  const handleRoleChange = (newRole) => {
+    setRole(newRole);
+    setErrorMessage('');
+    if (newRole === 'student') {
+      setClassName('7/1');
+      setStudyShift('Sáng');
+    } else if (newRole === 'teacher') {
+      setClassName('Tổ KHTN & Hội đồng KHKT');
+      setStudyShift('Toàn thời gian');
+    } else if (newRole === 'station_staff') {
+      setClassName('CLB Tình Nguyện Lê Lợi');
+      setStudyShift('Cả ngày');
+    }
+  };
+
   // States
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -125,12 +141,24 @@ export default function AuthModal({ isOpen, onClose }) {
     setSuccessMessage('');
 
     if (fullName.trim().length < 3) {
-      setErrorMessage('Họ và tên học sinh phải có ít nhất 3 ký tự.');
+      setErrorMessage(
+        role === 'teacher'
+          ? 'Họ và tên giáo viên phải có ít nhất 3 ký tự.'
+          : role === 'station_staff'
+          ? 'Họ tên cán bộ / Tên đội trực phải có ít nhất 3 ký tự.'
+          : 'Họ và tên học sinh phải có ít nhất 3 ký tự.'
+      );
       return;
     }
 
     if (studentCode.trim().length < 3) {
-      setErrorMessage('Mã học sinh / Tên đăng nhập phải có ít nhất 3 ký tự.');
+      setErrorMessage(
+        role === 'teacher'
+          ? 'Mã giáo viên / Tên đăng nhập phải có ít nhất 3 ký tự.'
+          : role === 'station_staff'
+          ? 'Mã trực trạm / Tên đăng nhập phải có ít nhất 3 ký tự.'
+          : 'Mã học sinh / Tên đăng nhập phải có ít nhất 3 ký tự.'
+      );
       return;
     }
 
@@ -150,7 +178,7 @@ export default function AuthModal({ isOpen, onClose }) {
     }
 
     if (codeCheckStatus && !codeCheckStatus.available) {
-      setErrorMessage(codeCheckStatus.message || 'Mã học sinh đã tồn tại.');
+      setErrorMessage(codeCheckStatus.message || 'Mã đăng nhập đã tồn tại. Vui lòng chọn mã khác.');
       return;
     }
 
@@ -160,8 +188,8 @@ export default function AuthModal({ isOpen, onClose }) {
       const res = await signUpStudentOrStaff({
         studentCode: studentCode.trim(),
         fullName: fullName.trim(),
-        className: role === 'teacher' ? 'Hội đồng KHKT' : role === 'station_staff' ? 'Đội Tình Nguyện' : className,
-        studyShift,
+        className: className.trim() || (role === 'teacher' ? 'Hội đồng KHKT' : role === 'station_staff' ? 'Đội Tình Nguyện' : '7/1'),
+        studyShift: studyShift || (role === 'teacher' ? 'Toàn thời gian' : role === 'station_staff' ? 'Cả ngày' : 'Sáng'),
         role,
         schoolCode: schoolCode.trim(),
         password: registerPassword,
@@ -356,7 +384,7 @@ export default function AuthModal({ isOpen, onClose }) {
                   <button
                     id="role-btn-student"
                     type="button"
-                    onClick={() => setRole('student')}
+                    onClick={() => handleRoleChange('student')}
                     className={`p-2 rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 ${
                       role === 'student'
                         ? 'border-emerald-600 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-400'
@@ -370,7 +398,7 @@ export default function AuthModal({ isOpen, onClose }) {
                   <button
                     id="role-btn-teacher"
                     type="button"
-                    onClick={() => setRole('teacher')}
+                    onClick={() => handleRoleChange('teacher')}
                     className={`p-2 rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 ${
                       role === 'teacher'
                         ? 'border-purple-600 bg-purple-50 text-purple-950 ring-2 ring-purple-400'
@@ -384,7 +412,7 @@ export default function AuthModal({ isOpen, onClose }) {
                   <button
                     id="role-btn-station"
                     type="button"
-                    onClick={() => setRole('station_staff')}
+                    onClick={() => handleRoleChange('station_staff')}
                     className={`p-2 rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 ${
                       role === 'station_staff'
                         ? 'border-amber-600 bg-amber-50 text-amber-950 ring-2 ring-amber-400'
@@ -422,7 +450,12 @@ export default function AuthModal({ isOpen, onClose }) {
               {/* Họ và tên */}
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">
-                  Họ và tên đầy đủ <span className="text-red-500">*</span>
+                  {role === 'teacher'
+                    ? 'Họ và tên giáo viên'
+                    : role === 'station_staff'
+                    ? 'Họ tên cán bộ / Tên đội trực'
+                    : 'Họ và tên học sinh'}{' '}
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -431,18 +464,29 @@ export default function AuthModal({ isOpen, onClose }) {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     required
-                    placeholder="VD: Nguyễn Minh Khôi, Trần Bảo An..."
+                    placeholder={
+                      role === 'teacher'
+                        ? 'VD: Thầy Nguyễn Văn A, Cô Lê Thị B...'
+                        : role === 'station_staff'
+                        ? 'VD: Đội Tình Nguyện THCS Lê Lợi, Nguyễn Văn C...'
+                        : 'VD: Nguyễn Minh Khôi, Trần Bảo An...'
+                    }
                     className="w-full text-xs px-3.5 py-2.5 pl-9 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                   <User className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                 </div>
               </div>
 
-              {/* Mã học sinh & Lớp */}
+              {/* Mã học sinh & Lớp / Đơn vị */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-1">
-                    Mã HS / Tên đăng nhập <span className="text-red-500">*</span>
+                    {role === 'teacher'
+                      ? 'Mã GV / Tên đăng nhập'
+                      : role === 'station_staff'
+                      ? 'Mã trực trạm / Tên đăng nhập'
+                      : 'Mã HS / Tên đăng nhập'}{' '}
+                    <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="register-student-code"
@@ -450,7 +494,13 @@ export default function AuthModal({ isOpen, onClose }) {
                     value={studentCode}
                     onChange={(e) => setStudentCode(e.target.value.replace(/[^a-zA-Z0-9._-]/g, '').toUpperCase())}
                     required
-                    placeholder="VD: HS009, KHOI.NM..."
+                    placeholder={
+                      role === 'teacher'
+                        ? 'VD: GV01, THAY.AN...'
+                        : role === 'station_staff'
+                        ? 'VD: TR01, TRUCTRAM...'
+                        : 'VD: HS009, KHOI.NM...'
+                    }
                     className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold uppercase"
                   />
                   {codeCheckStatus && (
@@ -465,7 +515,12 @@ export default function AuthModal({ isOpen, onClose }) {
 
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-1">
-                    {role === 'student' ? 'Lớp học' : 'Đơn vị / Ban'}
+                    {role === 'teacher'
+                      ? 'Tổ chuyên môn / Bộ phận'
+                      : role === 'station_staff'
+                      ? 'Đội / Ban trực phụ trách'
+                      : 'Lớp học'}{' '}
+                    <span className="text-red-500">*</span>
                   </label>
                   {role === 'student' ? (
                     <select
@@ -483,55 +538,112 @@ export default function AuthModal({ isOpen, onClose }) {
                       type="text"
                       value={className}
                       onChange={(e) => setClassName(e.target.value)}
-                      placeholder={role === 'teacher' ? 'Hội đồng KHKT' : 'Đội Tình Nguyện'}
-                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50"
+                      required
+                      placeholder={
+                        role === 'teacher'
+                          ? 'VD: Tổ KHTN, Tổ Toán - Tin, Hội đồng KHKT...'
+                          : 'VD: CLB Tình Nguyện, Phòng Đoàn Đội...'
+                      }
+                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                     />
                   )}
                 </div>
               </div>
 
-              {/* Buổi học chính (Học Sáng -> rảnh Chiều, Học Chiều -> rảnh Sáng) */}
+              {/* Buổi học chính / Ca trực công tác */}
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">
-                  Buổi học chính tại trường <span className="text-red-500">*</span>
+                  {role === 'teacher'
+                    ? 'Thời gian làm việc / Trực trường'
+                    : role === 'station_staff'
+                    ? 'Khung giờ trực phụ trách tại Trạm K1'
+                    : 'Buổi học chính tại trường'}{' '}
+                  <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setStudyShift('Sáng')}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
-                      studyShift === 'Sáng'
-                        ? 'border-amber-500 bg-amber-50/80 text-amber-950 ring-2 ring-amber-400'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="font-bold flex items-center gap-1.5">
-                      <Sun className="w-4 h-4 text-amber-600" />
-                      <span>Học buổi Sáng</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      Rảnh chiều • Thuật toán gợi ý ca Chiều
-                    </div>
-                  </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setStudyShift('Chiều')}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
-                      studyShift === 'Chiều'
-                        ? 'border-blue-500 bg-blue-50/80 text-blue-950 ring-2 ring-blue-400'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="font-bold flex items-center gap-1.5">
-                      <Sunset className="w-4 h-4 text-blue-600" />
-                      <span>Học buổi Chiều</span>
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      Rảnh sáng • Thuật toán gợi ý ca Sáng
-                    </div>
-                  </button>
-                </div>
+                {role === 'student' ? (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setStudyShift('Sáng')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        studyShift === 'Sáng'
+                          ? 'border-amber-500 bg-amber-50/80 text-amber-950 ring-2 ring-amber-400'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="font-bold flex items-center gap-1.5">
+                        <Sun className="w-4 h-4 text-amber-600" />
+                        <span>Học buổi Sáng</span>
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        Rảnh chiều • Xếp ca nhận đồ buổi Chiều
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStudyShift('Chiều')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        studyShift === 'Chiều'
+                          ? 'border-blue-500 bg-blue-50/80 text-blue-950 ring-2 ring-blue-400'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="font-bold flex items-center gap-1.5">
+                        <Sunset className="w-4 h-4 text-blue-600" />
+                        <span>Học buổi Chiều</span>
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        Rảnh sáng • Xếp ca nhận đồ buổi Sáng
+                      </div>
+                    </button>
+                  </div>
+                ) : role === 'teacher' ? (
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
+                    {[
+                      { id: 'Toàn thời gian', label: 'Toàn thời gian', desc: 'Cả ngày tại trường' },
+                      { id: 'Sáng', label: 'Buổi Sáng', desc: '07:00 - 11:30' },
+                      { id: 'Chiều', label: 'Buổi Chiều', desc: '13:00 - 17:30' }
+                    ].map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setStudyShift(s.id)}
+                        className={`p-2 rounded-xl border text-center transition-all ${
+                          studyShift === s.id
+                            ? 'border-purple-600 bg-purple-50 text-purple-950 ring-2 ring-purple-400 font-bold'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">{s.label}</div>
+                        <div className="text-[10px] text-gray-500">{s.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
+                    {[
+                      { id: 'Cả ngày', label: 'Theo ca phân công', desc: 'Cả ngày' },
+                      { id: 'Sáng', label: 'Ca Sáng', desc: '09:15 - 10:00' },
+                      { id: 'Chiều', label: 'Ca Chiều', desc: '14:00 - 14:45' }
+                    ].map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setStudyShift(s.id)}
+                        className={`p-2 rounded-xl border text-center transition-all ${
+                          studyShift === s.id
+                            ? 'border-amber-600 bg-amber-50 text-amber-950 ring-2 ring-amber-400 font-bold'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">{s.label}</div>
+                        <div className="text-[10px] text-gray-500">{s.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Mật khẩu & Xác nhận mật khẩu */}
@@ -580,10 +692,14 @@ export default function AuthModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              {/* SĐT phụ huynh / Ghi chú liên hệ */}
+              {/* Số điện thoại liên hệ */}
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">
-                  SĐT liên hệ phụ huynh (Tùy chọn)
+                  {role === 'teacher'
+                    ? 'Số điện thoại / Zalo công tác (Tùy chọn)'
+                    : role === 'station_staff'
+                    ? 'Số điện thoại trực trạm / Zalo Đội (Tùy chọn)'
+                    : 'Số điện thoại phụ huynh (Tùy chọn)'}
                 </label>
                 <div className="relative">
                   <input
@@ -591,11 +707,24 @@ export default function AuthModal({ isOpen, onClose }) {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="VD: 0905.xxx.xxx (để nhận tin nhắn khi có sách)"
+                    placeholder={
+                      role === 'teacher'
+                        ? 'VD: 0914.xxx.xxx (để phối hợp phê duyệt đề tài KHKT)'
+                        : role === 'station_staff'
+                        ? 'VD: 0905.xxx.xxx (đường dây nóng trực phòng Đội)'
+                        : 'VD: 0905.xxx.xxx (để nhận tin nhắn khi có sách vở)'
+                    }
                     className="w-full text-xs px-3.5 py-2.5 pl-9 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                 </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {role === 'teacher'
+                    ? '* Dùng để liên hệ nội bộ giữa Ban Giám hiệu, Giáo viên và Đội trực trạm.'
+                    : role === 'station_staff'
+                    ? '* Giúp học sinh và giáo viên liên hệ hỗ trợ khi đến nhận/gửi đồ tại trạm.'
+                    : '* Dùng để gửi tin nhắn thông báo khi bốc thăm trúng đồ dùng hoặc lịch hẹn nhận đồ.'}
+                </p>
               </div>
 
               {/* Submit Button */}
